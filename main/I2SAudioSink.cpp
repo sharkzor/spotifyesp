@@ -1,5 +1,7 @@
 #include "I2SAudioSink.h"
 
+#include <algorithm>
+
 #include "esp_check.h"
 #include "esp_log.h"
 
@@ -37,10 +39,15 @@ I2SAudioSink::~I2SAudioSink() {
 
 void I2SAudioSink::feedPCMFrames(const uint8_t* buffer, size_t bytes) {
   size_t written = 0;
+  int16_t scaled[256];
   while (written < bytes) {
+    size_t toCopy = std::min(bytes - written, sizeof(scaled));
+    const int16_t* in = reinterpret_cast<const int16_t*>(buffer + written);
+    for (size_t i = 0; i < toCopy / 2; i++) {
+      scaled[i] = static_cast<int16_t>((static_cast<int32_t>(in[i]) * volume_) >> 16);
+    }
     size_t chunk = 0;
-    if (i2s_channel_write(tx_, buffer + written, bytes - written, &chunk,
-                          1000) != ESP_OK) {
+    if (i2s_channel_write(tx_, scaled, toCopy, &chunk, 1000) != ESP_OK) {
       ESP_LOGW(TAG, "i2s write timeout");
       return;
     }

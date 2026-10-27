@@ -10,7 +10,7 @@
 #include "BellHTTPServer.h"
 #include "BellTask.h"
 #include "BellUtils.h"
-#include "CircularBuffer.h"
+#include "SpotifyPlayer.h"
 #include "Logger.h"
 #include "civetweb.h"
 #include "esp_event.h"
@@ -73,75 +73,6 @@ static void wifiConnect() {
                       portMAX_DELAY);
 }
 
-class CSpotPlayer : public bell::Task {
- private:
-  std::shared_ptr<cspot::SpircHandler> handler;
-  std::unique_ptr<I2SAudioSink> audioSink;
-  std::unique_ptr<bell::CircularBuffer> circularBuffer;
-  std::atomic<bool> isPaused;
-
- public:
-  CSpotPlayer(std::shared_ptr<cspot::SpircHandler> handler)
-      : bell::Task("player", 8 * 1024, 0, 0) {
-    this->handler = handler;
-    this->audioSink = std::make_unique<I2SAudioSink>(
-        CONFIG_SPOTIFY_I2S_BCLK, CONFIG_SPOTIFY_I2S_LRCLK,
-        CONFIG_SPOTIFY_I2S_DOUT);
-    this->audioSink->setParams(44100, 2, 16);
-
-    this->circularBuffer =
-        std::make_unique<bell::CircularBuffer>(1024 * 128 * 4);
-
-    this->handler->getTrackPlayer()->setDataCallback(
-        [this](uint8_t* data, size_t bytes) { this->feedData(data, bytes); });
-    this->isPaused = false;
-
-    this->handler->setEventHandler(
-        [this](std::unique_ptr<cspot::SpircHandler::Event> event) {
-          switch (event->eventType) {
-            case cspot::SpircHandler::EventType::PLAY_PAUSE:
-              this->isPaused = std::get<bool>(event->data);
-              break;
-            case cspot::SpircHandler::EventType::FLUSH:
-            case cspot::SpircHandler::EventType::SEEK:
-            case cspot::SpircHandler::EventType::PLAYBACK_START:
-              this->circularBuffer->emptyBuffer();
-              break;
-            default:
-              break;
-          }
-        });
-    startTask();
-  }
-
-  void feedData(uint8_t* data, size_t len) {
-    size_t toWrite = len;
-    while (toWrite > 0) {
-      size_t written =
-          this->circularBuffer->write(data + (len - toWrite), toWrite);
-      if (written == 0) {
-        BELL_SLEEP_MS(10);
-      }
-      toWrite -= written;
-    }
-  }
-
-  void runTask() {
-    std::vector<uint8_t> outBuf(1024);
-    while (true) {
-      if (!this->isPaused) {
-        size_t read = this->circularBuffer->read(outBuf.data(), outBuf.size());
-        this->audioSink->feedPCMFrames(outBuf.data(), read);
-        if (read == 0) {
-          BELL_SLEEP_MS(100);
-        }
-      } else {
-        BELL_SLEEP_MS(100);
-      }
-    }
-  }
-};
-
 class CSpotTask : public bell::Task {
  public:
   CSpotTask() : bell::Task("cspot", 32 * 1024, 0, 1) { startTask(); }
@@ -151,15 +82,16 @@ class CSpotTask : public bell::Task {
     mdns_hostname_set("spotifyesp");
     std::atomic<bool> gotBlob = false;
 
-    auto blob = std::make_shared<LoginBlob>(CONFIG_SPOTIFY_DEVICE_NAME);
+    auto blob = std::make_shared<cspot::LoginBlob>(CONFIG_SPOTIFY_DEVICE_NAME);
 
-    auto server = std::make_unique<bell::BellHTTPServer>(8080);
+    std::shared_ptr<bell::BellHTTPServer> server =
+        std::make_shared<bell::BellHTTPServer>(8080);
     server->registerGet(
-        "/spotify_info", [&server, blob](struct mg_connection* conn) {
+        "/spotify_info", [server, blob](struct mg_connection* conn) {
           return server->makeJsonResponse(blob->buildZeroconfInfo());
         });
     server->registerPost(
-        "/spotify_info", [&server, blob, &gotBlob](struct mg_connection* conn) {
+        "/spotify_info", [server, blob, &gotBlob](struct mg_connection* conn) {
           nlohmann::json obj;
           obj["status"] = 101;
           obj["spotifyError"] = 0;
@@ -185,7 +117,7 @@ class CSpotTask : public bell::Task {
           return server->makeJsonResponse(obj.dump());
         });
 
-    bell::MDNSService::registerService(
+    MDNSService::registerService(
         blob->getDeviceName(), "_spotify-connect", "_tcp", "", 8080,
         {{"VERSION", "1.0"}, {"CPath", "/spotify_info"}, {"Stack", "SP"}});
 
@@ -198,13 +130,15 @@ class CSpotTask : public bell::Task {
     auto ctx = cspot::Context::createFromBlob(blob);
     CSPOT_LOG(info, "Creating player");
     ctx->session->connectWithRandomAp();
-    auto token = ctx->session->authenticate(blob);
+    ctx->config.authData = ctx->session->authenticate(blob);
 
-    if (token.size() > 0) {
-      ctx->session->startTask();
+    if (ctx->config.authData.size() > 0) {
       auto handler = std::make_shared<cspot::SpircHandler>(ctx);
-      handler->subscribeToMercury();
-      auto player = std::make_shared<CSpotPlayer>(handler);
+      ctx->session->startTask();
+      auto sink = std::make_unique<I2SAudioSink>(CONFIG_SPOTIFY_I2S_BCLK,
+                                                 CONFIG_SPOTIFY_I2S_LRCLK,
+                                                 CONFIG_SPOTIFY_I2S_DOUT);
+      auto player = std::make_shared<SpotifyPlayer>(std::move(sink), handler);
 
       while (true) {
         ctx->session->handlePacket();

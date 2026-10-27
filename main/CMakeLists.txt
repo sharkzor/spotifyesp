@@ -6,6 +6,9 @@ idf_component_register(
     REQUIRES esp_wifi esp_netif esp_event nvs_flash driver
 )
 
+# cspot's vendored libraries (opus etc.) trip warnings that newer GCC treats as errors
+idf_build_set_property(COMPILE_OPTIONS "-Wno-error;-Wno-sizeof-array-div;-Wno-overloaded-virtual" APPEND)
+
 # Build cspot as a static library without its legacy-I2S audio sinks
 set(BUILD_SHARED_LIBS OFF)
 set(BUILD_TESTING OFF)

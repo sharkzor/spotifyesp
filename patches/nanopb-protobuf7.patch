@@ -1,0 +1,14 @@
+diff --git a/external/nanopb/generator/nanopb_generator.py b/external/nanopb/generator/nanopb_generator.py
+index e40f18b..e8e3238 100755
+--- a/external/nanopb/generator/nanopb_generator.py
++++ b/external/nanopb/generator/nanopb_generator.py
+@@ -1463,7 +1463,8 @@ class Message(ProtoElement):
+         optional_only.ClearField(str('extension'))
+         optional_only.ClearField(str('enum_type'))
+         desc = google.protobuf.descriptor.MakeDescriptor(optional_only)
+-        msg = reflection.MakeClass(desc)()
++        from google.protobuf import message_factory as _mf
++        msg = _mf.GetMessageClass(desc)()
+ 
+         for field in optional_only.field:
+             if field.type == FieldD.TYPE_STRING:
