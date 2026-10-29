@@ -1,4 +1,5 @@
 #pragma once
+#include "esp_log.h"
 
 #include <AudioSink.h>
 
@@ -11,7 +12,10 @@ class I2SAudioSink : public AudioSink {
   ~I2SAudioSink() override;
 
   void feedPCMFrames(const uint8_t* buffer, size_t bytes) override;
-  void volumeChanged(uint16_t volume) override { volume_ = volume; }
+  void volumeChanged(uint16_t volume) override {
+    volume_ = volume;
+    ESP_LOGI("i2s_sink", "volume -> %u", (unsigned)volume);
+  }
   bool setParams(uint32_t sampleRate, uint8_t channelCount,
                  uint8_t bitDepth) override;
 

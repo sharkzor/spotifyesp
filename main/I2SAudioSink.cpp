@@ -40,6 +40,12 @@ I2SAudioSink::~I2SAudioSink() {
 void I2SAudioSink::feedPCMFrames(const uint8_t* buffer, size_t bytes) {
   size_t written = 0;
   int16_t scaled[256];
+  static uint32_t calls = 0, totalBytes = 0;
+  totalBytes += bytes;
+  if (++calls % 200 == 1) {
+    ESP_LOGI(TAG, "feed #%u total=%u bytes vol=%u rate=%u", (unsigned)calls,
+             (unsigned)totalBytes, (unsigned)volume_, (unsigned)sampleRate_);
+  }
   while (written < bytes) {
     size_t toCopy = std::min(bytes - written, sizeof(scaled));
     const int16_t* in = reinterpret_cast<const int16_t*>(buffer + written);

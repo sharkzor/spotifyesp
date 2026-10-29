@@ -11,5 +11,9 @@ else
   git -C cspot/cspot/bell apply ../../../patches/nanopb-protobuf7.patch
 fi
 
+if git -C cspot/cspot apply --check ../../patches/cspot-login-mac.patch 2>/dev/null; then
+  git -C cspot/cspot apply ../../patches/cspot-login-mac.patch
+fi
+
 . ./env.sh
 python -m pip install --quiet protobuf grpcio-tools "setuptools<81"

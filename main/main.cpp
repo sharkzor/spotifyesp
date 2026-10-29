@@ -1,3 +1,4 @@
+#include "esp_system.h"
 #include <MDNSService.h>
 #include <atomic>
 #include <memory>
@@ -100,18 +101,33 @@ class CSpotTask : public bell::Task {
           std::string body = "";
           auto requestInfo = mg_get_request_info(conn);
           if (requestInfo->content_length > 0) {
-            body.resize(requestInfo->content_length);
-            mg_read(conn, body.data(), requestInfo->content_length);
+            size_t total = requestInfo->content_length;
+            body.resize(total);
+            size_t got = 0;
+            while (got < total) {
+              int n = mg_read(conn, body.data() + got, total - got);
+              if (n <= 0) break;
+              got += n;
+            }
+            body.resize(got);
 
-            mg_header hd[10];
-            int num = mg_split_form_urlencoded(body.data(), hd, 10);
+            mg_header hd[16];
+            int num = mg_split_form_urlencoded(body.data(), hd, 16);
             std::map<std::string, std::string> queryMap;
             for (int i = 0; i < num; i++) {
               queryMap[hd[i].name] = hd[i].value;
             }
+            BELL_LOG(info, "cspot", "Login POST: %d bytes, %d fields", (int)got,
+                     num);
 
-            blob->loadZeroconfQuery(queryMap);
-            gotBlob = true;
+            try {
+              blob->loadZeroconfQuery(queryMap);
+              gotBlob = true;
+            } catch (const std::exception& e) {
+              BELL_LOG(error, "cspot", "Login failed: %s", e.what());
+              obj["status"] = 303;
+              obj["statusString"] = "ERROR-INVALID-ARGUMENTS";
+            }
           }
 
           return server->makeJsonResponse(obj.dump());
@@ -129,8 +145,25 @@ class CSpotTask : public bell::Task {
     BELL_LOG(info, "cspot", "Got blob!");
     auto ctx = cspot::Context::createFromBlob(blob);
     CSPOT_LOG(info, "Creating player");
-    ctx->session->connectWithRandomAp();
-    ctx->config.authData = ctx->session->authenticate(blob);
+    bool connected = false;
+    for (int attempt = 0; attempt < 5 && !connected; attempt++) {
+      try {
+        ctx->session->connectWithRandomAp();
+        connected = true;
+      } catch (const std::exception& e) {
+        BELL_LOG(error, "cspot", "AP connect failed (%d): %s", attempt, e.what());
+        BELL_SLEEP_MS(1000);
+      }
+    }
+    if (!connected) {
+      esp_restart();
+    }
+    try {
+      ctx->config.authData = ctx->session->authenticate(blob);
+    } catch (const std::exception& e) {
+      BELL_LOG(error, "cspot", "Authenticate failed: %s", e.what());
+      esp_restart();
+    }
 
     if (ctx->config.authData.size() > 0) {
       auto handler = std::make_shared<cspot::SpircHandler>(ctx);
