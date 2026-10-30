@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 
 static const char* TAG = "i2s_sink";
@@ -43,8 +44,12 @@ void I2SAudioSink::feedPCMFrames(const uint8_t* buffer, size_t bytes) {
   static uint32_t calls = 0, totalBytes = 0;
   totalBytes += bytes;
   if (++calls % 200 == 1) {
-    ESP_LOGI(TAG, "feed #%u total=%u bytes vol=%u rate=%u", (unsigned)calls,
-             (unsigned)totalBytes, (unsigned)volume_, (unsigned)sampleRate_);
+    ESP_LOGI(TAG, "feed #%u vol=%u rate=%u internal free=%u largest=%u dma largest=%u psram free=%u",
+             (unsigned)calls, (unsigned)volume_, (unsigned)sampleRate_,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
   }
   while (written < bytes) {
     size_t toCopy = std::min(bytes - written, sizeof(scaled));
