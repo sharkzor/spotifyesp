@@ -33,6 +33,9 @@ extern "C" {
 void app_main(void);
 }
 
+#include "esp_heap_caps.h"
+#include "freertos/idf_additions.h"
+
 static EventGroupHandle_t wifiEvents;
 static constexpr int WIFI_CONNECTED_BIT = BIT0;
 
@@ -65,6 +68,7 @@ static void wifiConnect() {
           sizeof(wifiCfg.sta.ssid));
   strlcpy((char*)wifiCfg.sta.password, CONFIG_SPOTIFY_WIFI_PASSWORD,
           sizeof(wifiCfg.sta.password));
+  ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifiCfg));
   ESP_ERROR_CHECK(esp_wifi_start());
@@ -74,9 +78,12 @@ static void wifiConnect() {
                       portMAX_DELAY);
 }
 
-class CSpotTask : public bell::Task {
+class CSpotTask {
  public:
-  CSpotTask() : bell::Task("cspot", 32 * 1024, 0, 1) { startTask(); }
+  static void entry(void*) {
+    CSpotTask().runTask();
+    vTaskDelete(nullptr);
+  }
 
   void runTask() {
     mdns_init();
@@ -132,7 +139,6 @@ class CSpotTask : public bell::Task {
 
           return server->makeJsonResponse(obj.dump());
         });
-
     MDNSService::registerService(
         blob->getDeviceName(), "_spotify-connect", "_tcp", "", 8080,
         {{"VERSION", "1.0"}, {"CPath", "/spotify_info"}, {"Stack", "SP"}});
@@ -193,6 +199,8 @@ void app_main(void) {
   ESP_LOGI(TAG, "Connected to WiFi, starting Spotify receiver");
 
   bell::setDefaultLogger();
-  auto task = std::make_unique<CSpotTask>();
+  xTaskCreatePinnedToCoreWithCaps(CSpotTask::entry, "cspot", 32 * 1024, nullptr,
+                                  5, nullptr, 1,
+                                  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
   vTaskSuspend(NULL);
 }

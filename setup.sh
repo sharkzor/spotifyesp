@@ -15,5 +15,9 @@ if git -C cspot/cspot apply --check ../../patches/cspot-login-mac.patch 2>/dev/n
   git -C cspot/cspot apply ../../patches/cspot-login-mac.patch
 fi
 
+if git -C cspot/cspot/bell apply --check ../../../patches/bell-civetweb-threads.patch 2>/dev/null; then
+  git -C cspot/cspot/bell apply ../../../patches/bell-civetweb-threads.patch
+fi
+
 . ./env.sh
 python -m pip install --quiet protobuf grpcio-tools "setuptools<81"

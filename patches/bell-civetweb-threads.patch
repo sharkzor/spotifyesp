@@ -1,0 +1,69 @@
+diff --git a/external/civetweb/civetweb.c b/external/civetweb/civetweb.c
+index 5a7cb2d..d8c863c 100644
+--- a/external/civetweb/civetweb.c
++++ b/external/civetweb/civetweb.c
+@@ -342,8 +342,11 @@ typedef cw_freertos_handle cw_thread_handle_t;
+ 
+ static void freeRTOSTaskEntryFunc(void* handle) {
+   cw_thread_handle_t* task_param = (cw_thread_handle_t*) handle;
++  mg_thread_func_t entry_func = task_param->entry_func;
++  void* param = task_param->param;
++  heap_caps_free(task_param);
+ 
+-  task_param->entry_func(task_param->param);
++  entry_func(param);
+ 
+   // TCB are cleanup in IDLE task, so give it some time
+   // TODO: IMPLEMENT TCB CLEANUP
+@@ -5827,11 +5830,17 @@ mg_start_thread(mg_thread_func_t func, void *param)
+   thread_id.x_stack = (StackType_t*) heap_caps_malloc(thread_id.stack_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+   thread_id.param = param;
+   thread_id.entry_func = func;
+-  thread_id.task_handle = xTaskCreateStaticPinnedToCore(freeRTOSTaskEntryFunc, "civetweb", thread_id.stack_size, &thread_id,
++  cw_thread_handle_t* heap_id = (cw_thread_handle_t*) heap_caps_malloc(sizeof(cw_thread_handle_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
++  if (heap_id == NULL) {
++    return -1;
++  }
++  *heap_id = thread_id;
++  thread_id.task_handle = xTaskCreateStaticPinnedToCore(freeRTOSTaskEntryFunc, "civetweb", thread_id.stack_size, heap_id,
+                   CONFIG_ESP32_PTHREAD_TASK_PRIO_DEFAULT, thread_id.x_stack, thread_id.task_buffer, 1);
+   if (thread_id.task_handle != NULL) {
+     result = 0;
+   } else {
++    heap_caps_free(heap_id);
+     result = -1;
+   }
+ 
+@@ -5874,12 +5883,18 @@ mg_start_thread_with_id(mg_thread_func_t func,
+   thread_id.x_stack = (StackType_t*) heap_caps_malloc(thread_id.stack_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+   thread_id.param = param;
+   thread_id.entry_func = func;
+-  thread_id.task_handle = xTaskCreateStaticPinnedToCore(freeRTOSTaskEntryFunc, "civetweb", thread_id.stack_size, &thread_id,
++  cw_thread_handle_t* heap_id = (cw_thread_handle_t*) heap_caps_malloc(sizeof(cw_thread_handle_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
++  if (heap_id == NULL) {
++    return -1;
++  }
++  *heap_id = thread_id;
++  thread_id.task_handle = xTaskCreateStaticPinnedToCore(freeRTOSTaskEntryFunc, "civetweb", thread_id.stack_size, heap_id,
+                   CONFIG_ESP32_PTHREAD_TASK_PRIO_DEFAULT, thread_id.x_stack, thread_id.task_buffer, 1);
+   if (thread_id.task_handle != NULL) {
+     result = 0;
+ 		*threadidptr = thread_id;
+   } else {
++    heap_caps_free(heap_id);
+     result = -1;
+   }
+ #else
+diff --git a/main/io/BellHTTPServer.cpp b/main/io/BellHTTPServer.cpp
+index feb34a5..ed39267 100644
+--- a/main/io/BellHTTPServer.cpp
++++ b/main/io/BellHTTPServer.cpp
+@@ -197,6 +197,8 @@ BellHTTPServer::BellHTTPServer(int serverPort) {
+ 
+   civetWebOptions.push_back("listening_ports");
+   civetWebOptions.push_back(port);
++  civetWebOptions.push_back("num_threads");
++  civetWebOptions.push_back("3");
+   server = std::make_unique<CivetServer>(civetWebOptions);
+ }
+ 
