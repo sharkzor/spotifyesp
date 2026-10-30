@@ -11,6 +11,9 @@ Tested on an ESP32-S3 with 16 MB flash and 8 MB octal PSRAM.
 |---|---|---|
 | `devkit-n16r8` | ESP32-S3-DevKitC-1 style N16R8 | 16 MB / 8 MB octal |
 | `zero-n8r8` | Waveshare ESP32-S3-Zero-N8R8 | 8 MB / 8 MB octal |
+| `xiao-esp32s3` | Seeed Studio XIAO ESP32-S3 (also the Sense) | 8 MB / 8 MB octal |
+
+On the XIAO the wiring is BCK→D4 (GPIO5), LCK→D3 (GPIO4), DIN→D5 (GPIO6). To flash it, hold BOOT while plugging in USB.
 
 Board settings live in `boards/<name>.defaults`; add a file there for another board.
 

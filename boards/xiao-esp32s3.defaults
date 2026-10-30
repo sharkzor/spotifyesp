@@ -1,0 +1,7 @@
+# Seeed Studio XIAO ESP32-S3 (8 MB flash, 8 MB octal PSRAM)
+# GPIO5/4/6 are the pads labelled D4/D3/D5. GPIO39-42 (camera/SD on the Sense) and
+# GPIO33-37 (PSRAM) are not used.
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
+CONFIG_SPOTIFY_I2S_BCLK=5
+CONFIG_SPOTIFY_I2S_LRCLK=4
+CONFIG_SPOTIFY_I2S_DOUT=6
