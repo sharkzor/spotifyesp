@@ -1,5 +1,8 @@
 build/
+build-*/
 sdkconfig
+sdkconfig.*
+!sdkconfig.defaults
 sdkconfig.old
 sdkconfig.local
 managed_components/
