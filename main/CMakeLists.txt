@@ -3,7 +3,7 @@ file(GLOB SOURCES "*.cpp")
 idf_component_register(
     SRCS ${SOURCES}
     INCLUDE_DIRS "."
-    REQUIRES esp_wifi esp_netif esp_event nvs_flash driver
+    REQUIRES esp_wifi esp_netif esp_event nvs_flash driver esp_http_server esp_timer lwip esp_hw_support
 )
 
 # cspot's vendored libraries (opus etc.) trip warnings that newer GCC treats as errors

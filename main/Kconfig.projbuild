@@ -1,16 +1,27 @@
 menu "Spotify ESP"
 
     config SPOTIFY_DEVICE_NAME
-        string "Spotify Connect device name"
+        string "Spotify Connect device name (default, can be changed in the setup portal)"
         default "Spotify ESP"
 
     config SPOTIFY_WIFI_SSID
-        string "WiFi SSID"
+        string "WiFi SSID (leave empty to use the setup portal)"
         default ""
 
     config SPOTIFY_WIFI_PASSWORD
         string "WiFi password"
         default ""
+
+    config SPOTIFY_SETUP_AP_SSID
+        string "Name prefix of the WiFi setup access point"
+        default "SpotifyESP-Setup"
+
+    config SPOTIFY_SETUP_BUTTON_GPIO
+        int "GPIO of the button that opens the WiFi setup portal (-1 to disable)"
+        default 0
+        help
+            Hold the button for 3 seconds after the board has started and release it.
+            GPIO0 is the BOOT button on the supported boards.
 
     config SPOTIFY_I2S_BCLK
         int "I2S BCK pin (PCM5102 BCK)"

@@ -55,14 +55,14 @@ The 5V pad takes 3.7 to 6 V when powering externally.
 ```sh
 git clone --recursive <this repo>
 cd spotifyesp
-./flash.sh                 # asks for board, WiFi (first time) and port
+./flash.sh                 # asks for board, WiFi (first time, optional) and port
 ./flash.sh zero-n8r8       # or name the board directly
 ./flash.sh zero-n8r8 -p /dev/cu.usbmodem1101 --monitor
 ```
 
 `flash.sh` creates `sdkconfig.local` with your WiFi details (not committed), runs
 `setup.sh` when needed, builds into `build-<board>/` and flashes. `--build-only`
-skips flashing.
+skips flashing. Leave the WiFi SSID empty to set up WiFi on the board itself, see below.
 
 The project builds with ESP-IDF 5.5. `env.sh` reuses the toolchain that ESPHome
 downloads into `~/Library/Caches/esphome/idf`; with a normal ESP-IDF install,
@@ -70,6 +70,26 @@ export your own environment instead and adjust `env.sh`.
 
 Open Spotify, press the *Devices* button and pick the device name. The login is
 not stored, so after a reboot you have to select the device again in the app.
+
+## WiFi setup portal
+
+The WiFi network and the Spotify device name can be entered on the board itself, so
+they don't have to be compiled in.
+
+1. The board opens the WiFi network `SpotifyESP-Setup-XXXX` (no password) when it has
+   no WiFi settings, when it can't join the saved network, or after you hold the BOOT
+   button for 3 seconds and release it (hold it after the board has started; holding
+   BOOT while powering up enters flash mode).
+2. Connect a phone or laptop to it. The setup page opens by itself; if not, browse to
+   `http://192.168.4.1/`.
+3. Pick the network, enter the password and the device name and press *Save and restart*.
+
+Settings are stored in flash and take precedence over WiFi settings compiled in via
+`sdkconfig.local`, which remain the fallback. If the saved network is unreachable, the
+setup network comes back after about 30 seconds and the board restarts to retry after
+5 minutes without use. The portal is open to anyone in range while it is active.
+The BOOT button GPIO and the setup network name can be changed in `idf.py menuconfig`
+under *Spotify ESP*.
 
 ## Notes
 

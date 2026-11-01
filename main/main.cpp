@@ -26,6 +26,7 @@
 #include "sdkconfig.h"
 
 #include "I2SAudioSink.h"
+#include "WifiSetup.h"
 
 static const char* TAG = "spotifyesp";
 
@@ -38,19 +39,33 @@ void app_main(void);
 
 static EventGroupHandle_t wifiEvents;
 static constexpr int WIFI_CONNECTED_BIT = BIT0;
+static constexpr int WIFI_FAIL_BIT = BIT1;
+// Attempts before the first connection; after that the board retries forever.
+static constexpr int WIFI_MAX_INITIAL_RETRIES = 8;
+// Without web requests the setup portal restarts to retry the saved network.
+static constexpr uint32_t PORTAL_IDLE_REBOOT_MS = 5 * 60 * 1000;
+
+static std::atomic<int> wifiRetries = 0;
+static std::atomic<bool> wifiEverConnected = false;
+static std::string deviceName;
 
 static void wifiEventHandler(void*, esp_event_base_t base, int32_t id, void*) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
     esp_wifi_connect();
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+    if (!wifiEverConnected && ++wifiRetries >= WIFI_MAX_INITIAL_RETRIES) {
+      xEventGroupSetBits(wifiEvents, WIFI_FAIL_BIT);
+      return;
+    }
     ESP_LOGW(TAG, "WiFi disconnected, retrying");
     esp_wifi_connect();
   } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+    wifiEverConnected = true;
     xEventGroupSetBits(wifiEvents, WIFI_CONNECTED_BIT);
   }
 }
 
-static void wifiConnect() {
+static bool wifiConnect(const std::string& ssid, const std::string& password) {
   wifiEvents = xEventGroupCreate();
   ESP_ERROR_CHECK(esp_netif_init());
   ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -64,9 +79,8 @@ static void wifiConnect() {
                                              &wifiEventHandler, nullptr));
 
   wifi_config_t wifiCfg = {};
-  strlcpy((char*)wifiCfg.sta.ssid, CONFIG_SPOTIFY_WIFI_SSID,
-          sizeof(wifiCfg.sta.ssid));
-  strlcpy((char*)wifiCfg.sta.password, CONFIG_SPOTIFY_WIFI_PASSWORD,
+  strlcpy((char*)wifiCfg.sta.ssid, ssid.c_str(), sizeof(wifiCfg.sta.ssid));
+  strlcpy((char*)wifiCfg.sta.password, password.c_str(),
           sizeof(wifiCfg.sta.password));
   ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
   ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
@@ -74,8 +88,10 @@ static void wifiConnect() {
   ESP_ERROR_CHECK(esp_wifi_start());
   esp_wifi_set_ps(WIFI_PS_NONE);
 
-  xEventGroupWaitBits(wifiEvents, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE,
-                      portMAX_DELAY);
+  EventBits_t bits =
+      xEventGroupWaitBits(wifiEvents, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+                          pdFALSE, pdFALSE, portMAX_DELAY);
+  return bits & WIFI_CONNECTED_BIT;
 }
 
 class CSpotTask {
@@ -90,7 +106,7 @@ class CSpotTask {
     mdns_hostname_set("spotifyesp");
     std::atomic<bool> gotBlob = false;
 
-    auto blob = std::make_shared<cspot::LoginBlob>(CONFIG_SPOTIFY_DEVICE_NAME);
+    auto blob = std::make_shared<cspot::LoginBlob>(deviceName);
 
     std::shared_ptr<bell::BellHTTPServer> server =
         std::make_shared<bell::BellHTTPServer>(8080);
@@ -195,8 +211,31 @@ void app_main(void) {
   }
   ESP_ERROR_CHECK(ret);
 
-  wifiConnect();
-  ESP_LOGI(TAG, "Connected to WiFi, starting Spotify receiver");
+  // Settings saved by the setup portal win over the compile-time defaults.
+  wifi_setup::Settings settings;
+  wifi_setup::load(settings);
+  if (settings.ssid.empty()) {
+    settings.ssid = CONFIG_SPOTIFY_WIFI_SSID;
+    settings.password = CONFIG_SPOTIFY_WIFI_PASSWORD;
+  }
+  if (settings.deviceName.empty()) {
+    settings.deviceName = CONFIG_SPOTIFY_DEVICE_NAME;
+  }
+
+  if (wifi_setup::consumePortalRequest() || settings.ssid.empty()) {
+    wifi_setup::runPortal(settings,
+                          settings.ssid.empty() ? 0 : PORTAL_IDLE_REBOOT_MS);
+  }
+
+  if (!wifiConnect(settings.ssid, settings.password)) {
+    ESP_LOGE(TAG, "Could not join '%s', starting WiFi setup",
+             settings.ssid.c_str());
+    wifi_setup::restartIntoPortal();
+  }
+  deviceName = settings.deviceName;
+  wifi_setup::startButtonWatcher(CONFIG_SPOTIFY_SETUP_BUTTON_GPIO);
+  ESP_LOGI(TAG, "Connected to WiFi, starting Spotify receiver as '%s'",
+           deviceName.c_str());
 
   bell::setDefaultLogger();
   xTaskCreatePinnedToCoreWithCaps(CSpotTask::entry, "cspot", 32 * 1024, nullptr,

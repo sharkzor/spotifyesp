@@ -34,9 +34,12 @@ if [ ! -f "boards/$BOARD.defaults" ]; then
 fi
 
 if [ ! -f sdkconfig.local ]; then
-  read -rp "WiFi SSID: " SSID
-  read -rsp "WiFi password: " PASS; echo
-  read -rp "Device name shown in Spotify [Spotify ESP]: " NAME
+  read -rp "WiFi SSID (empty = set it up later through the board's setup portal): " SSID
+  PASS=""; NAME=""
+  if [ -n "$SSID" ]; then
+    read -rsp "WiFi password: " PASS; echo
+    read -rp "Device name shown in Spotify [Spotify ESP]: " NAME
+  fi
   cat > sdkconfig.local <<EOF
 CONFIG_SPOTIFY_WIFI_SSID="$SSID"
 CONFIG_SPOTIFY_WIFI_PASSWORD="$PASS"
