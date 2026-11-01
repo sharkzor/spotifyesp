@@ -48,6 +48,7 @@ EOF
 fi
 
 [ -f cspot/cspot/bell/external/nanopb/generator/nanopb_generator.py ] || ./setup.sh
+bash ./patches/apply.sh
 . ./env.sh
 
 if [ -z "$PORT" ] && [ "$BUILD_ONLY" = 0 ]; then

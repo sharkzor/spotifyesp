@@ -4,20 +4,7 @@ cd "$(dirname "$0")"
 
 git submodule update --init --recursive
 
-# cspot's bundled nanopb generator uses an API removed in protobuf 5+
-if ! git -C cspot/cspot/bell apply --check ../../../patches/nanopb-protobuf7.patch 2>/dev/null; then
-  echo "nanopb patch already applied or not needed"
-else
-  git -C cspot/cspot/bell apply ../../../patches/nanopb-protobuf7.patch
-fi
-
-if git -C cspot/cspot apply --check ../../patches/cspot-login-mac.patch 2>/dev/null; then
-  git -C cspot/cspot apply ../../patches/cspot-login-mac.patch
-fi
-
-if git -C cspot/cspot/bell apply --check ../../../patches/bell-civetweb-threads.patch 2>/dev/null; then
-  git -C cspot/cspot/bell apply ../../../patches/bell-civetweb-threads.patch
-fi
+bash ./patches/apply.sh
 
 . ./env.sh
 python -m pip install --quiet protobuf grpcio-tools "setuptools<81"

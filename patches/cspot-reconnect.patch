@@ -1,0 +1,494 @@
+diff --git a/cspot/include/MercurySession.h b/cspot/include/MercurySession.h
+index 91f05f5..e9882ae 100644
+--- a/cspot/include/MercurySession.h
++++ b/cspot/include/MercurySession.h
+@@ -103,23 +103,28 @@ class MercurySession : public bell::Task, public cspot::Session {
+   const int PING_TIMEOUT_MS = 2 * 60 * 1000 + 5000;
+ 
+   std::shared_ptr<cspot::TimeProvider> timeProvider;
+-  Header tempMercuryHeader = {};
+   ConnectionEstabilishedCallback connectionReadyCallback = nullptr;
+ 
+   bell::Queue<cspot::Packet> packetQueue;
+ 
+   void runTask() override;
+   void reconnect();
++  void sendPacket(uint8_t command, std::vector<uint8_t>& data);
++  void logStackHeadroom();
++  std::mutex connectionMutex;
+ 
+   std::unordered_map<uint64_t, ResponseCallback> callbacks;
+   std::unordered_map<std::string, ResponseCallback> subscriptions;
+   std::unordered_map<uint32_t, AudioKeyCallback> audioKeyCallbacks;
++  std::mutex requestsMutex;
++  ResponseCallback takeCallback(uint64_t sequenceId);
++  AudioKeyCallback takeAudioKeyCallback(uint32_t sequenceId);
+ 
+   uint64_t sequenceId = 1;
+   uint32_t audioKeySequence = 1;
+ 
+   unsigned long long timestampDiff;
+-  unsigned long long lastPingTimestamp = -1;
++  std::atomic<unsigned long long> lastPingTimestamp = -1;
+   std::string countryCode = "";
+ 
+   std::mutex isRunningMutex;
+diff --git a/cspot/include/TrackQueue.h b/cspot/include/TrackQueue.h
+index 8e2f0c3..4900161 100644
+--- a/cspot/include/TrackQueue.h
++++ b/cspot/include/TrackQueue.h
+@@ -30,7 +30,7 @@ struct TrackInfo {
+   void loadPbEpisode(Episode* pbEpisode, const std::vector<uint8_t>& gid);
+ };
+ 
+-class QueuedTrack {
++class QueuedTrack : public std::enable_shared_from_this<QueuedTrack> {
+  public:
+   QueuedTrack(TrackReference& ref, std::shared_ptr<cspot::Context> ctx,
+               uint32_t requestedPosition = 0);
+@@ -48,7 +48,7 @@ class QueuedTrack {
+ 
+   std::shared_ptr<bell::WrappedSemaphore> loadedSemaphore;
+ 
+-  State state = State::QUEUED;  // Current state of the track
++  std::atomic<State> state = State::QUEUED;  // Current state of the track
+   TrackReference ref;           // Holds GID, URI and Context
+   TrackInfo trackInfo;  // Full track information fetched from spotify, name etc
+ 
+diff --git a/cspot/src/MercurySession.cpp b/cspot/src/MercurySession.cpp
+index 7aafbb7..9938aa5 100644
+--- a/cspot/src/MercurySession.cpp
++++ b/cspot/src/MercurySession.cpp
+@@ -22,7 +22,7 @@
+ using namespace cspot;
+ 
+ MercurySession::MercurySession(std::shared_ptr<TimeProvider> timeProvider)
+-    : bell::Task("mercury_dispatcher", 4 * 1024, 3, 1) {
++    : bell::Task("mercury_dispatcher", 32 * 1024, 3, 1) {
+   this->timeProvider = timeProvider;
+ }
+ 
+@@ -45,12 +45,14 @@ void MercurySession::runTask() {
+         timeProvider->syncWithPingPacket(packet.data);
+ 
+         this->lastPingTimestamp = timeProvider->getSyncedTimestamp();
+-        this->shanConn->sendPacket(0x49, packet.data);
++        sendPacket(0x49, packet.data);
++        logStackHeadroom();
+       } else {
+         this->packetQueue.push(packet);
+       }
+     } catch (const std::runtime_error& e) {
+       CSPOT_LOG(error, "Error while receiving packet: %s", e.what());
++      isReconnecting = true;
+       failAllPending();
+ 
+       if (!isRunning)
+@@ -65,29 +67,57 @@ void MercurySession::runTask() {
+ void MercurySession::reconnect() {
+   isReconnecting = true;
+ 
+-  try {
+-    this->conn = nullptr;
+-    this->shanConn = nullptr;
+-
+-    this->connectWithRandomAp();
+-    this->authenticate(this->authBlob);
+-
+-    CSPOT_LOG(info, "Reconnection successful");
+-
+-    BELL_SLEEP_MS(100);
+-
+-    lastPingTimestamp = timeProvider->getSyncedTimestamp();
+-    isReconnecting = false;
++  while (isRunning) {
++    try {
++      {
++        std::scoped_lock lock(connectionMutex);
++        this->shanConn.reset();
++        this->conn.reset();
++        // Authentication may need socket retries before the next Spotify ping.
++        lastPingTimestamp = timeProvider->getSyncedTimestamp();
++        this->connectWithRandomAp();
++        if (this->authenticate(this->authBlob).empty()) {
++          throw std::runtime_error("Reauthentication was rejected");
++        }
++        lastPingTimestamp = timeProvider->getSyncedTimestamp();
++        isReconnecting = false;
++      }
+ 
+-    this->executeEstabilishedCallback = true;
+-  } catch (...) {
+-    CSPOT_LOG(error, "Cannot reconnect, will retry in 5s");
+-    BELL_SLEEP_MS(5000);
++      CSPOT_LOG(info, "Reconnection successful");
++      logStackHeadroom();
++      this->executeEstabilishedCallback = true;
++      return;
++    } catch (const std::exception& e) {
++      CSPOT_LOG(error, "Cannot reconnect: %s; retrying in 5s", e.what());
++      logStackHeadroom();
++      for (int wait = 0; wait < 50 && isRunning; ++wait) {
++        BELL_SLEEP_MS(100);
++      }
++    }
++  }
++}
+ 
+-    if (isRunning) {
+-      return reconnect();
++void MercurySession::sendPacket(uint8_t command, std::vector<uint8_t>& data) {
++  if (isReconnecting) {
++    throw std::runtime_error("Spotify session is reconnecting");
++  }
++  std::shared_ptr<ShannonConnection> connection;
++  {
++    std::scoped_lock lock(connectionMutex);
++    if (isReconnecting || !shanConn) {
++      throw std::runtime_error("Spotify session is unavailable");
+     }
++    // Keep an in-flight sender's connection alive even if reconnect replaces it.
++    connection = shanConn;
+   }
++  connection->sendPacket(command, data);
++}
++
++void MercurySession::logStackHeadroom() {
++#ifdef ESP_PLATFORM
++  CSPOT_LOG(info, "Dispatcher stack minimum free: %u bytes",
++            (unsigned)uxTaskGetStackHighWaterMark(nullptr));
++#endif
+ }
+ 
+ void MercurySession::setConnectedHandler(
+@@ -100,7 +130,7 @@ bool MercurySession::triggerTimeout() {
+     return true;
+   auto currentTimestamp = timeProvider->getSyncedTimestamp();
+ 
+-  if (currentTimestamp - this->lastPingTimestamp > PING_TIMEOUT_MS) {
++  if (currentTimestamp - this->lastPingTimestamp.load() > PING_TIMEOUT_MS) {
+     CSPOT_LOG(debug, "Reconnection required, no ping received");
+     return true;
+   }
+@@ -109,25 +139,40 @@ bool MercurySession::triggerTimeout() {
+ }
+ 
+ void MercurySession::unregister(uint64_t sequenceId) {
+-  auto callback = this->callbacks.find(sequenceId);
+-
+-  if (callback != this->callbacks.end()) {
+-    this->callbacks.erase(callback);
+-  }
++  std::scoped_lock lock(requestsMutex);
++  callbacks.erase(sequenceId);
+ }
+ 
+ void MercurySession::unregisterAudioKey(uint32_t sequenceId) {
+-  auto callback = this->audioKeyCallbacks.find(sequenceId);
++  std::scoped_lock lock(requestsMutex);
++  audioKeyCallbacks.erase(sequenceId);
++}
+ 
+-  if (callback != this->audioKeyCallbacks.end()) {
+-    this->audioKeyCallbacks.erase(callback);
+-  }
++MercurySession::ResponseCallback MercurySession::takeCallback(uint64_t id) {
++  std::scoped_lock lock(requestsMutex);
++  auto it = callbacks.find(id);
++  if (it == callbacks.end()) return {};
++  auto callback = std::move(it->second);
++  callbacks.erase(it);
++  return callback;
++}
++
++MercurySession::AudioKeyCallback MercurySession::takeAudioKeyCallback(uint32_t id) {
++  std::scoped_lock lock(requestsMutex);
++  auto it = audioKeyCallbacks.find(id);
++  if (it == audioKeyCallbacks.end()) return {};
++  auto callback = std::move(it->second);
++  audioKeyCallbacks.erase(it);
++  return callback;
+ }
+ 
+ void MercurySession::disconnect() {
+   CSPOT_LOG(info, "Disconnecting mercury session");
+   this->isRunning = false;
+-  conn->close();
++  {
++    std::scoped_lock lock(connectionMutex);
++    if (conn) conn->close();
++  }
+   std::scoped_lock lock(this->isRunningMutex);
+ }
+ 
+@@ -160,10 +205,10 @@ void MercurySession::handlePacket() {
+       // First four bytes mark the sequence id
+       auto seqId = ntohl(extract<uint32_t>(packet.data, 0));
+ 
+-      if (this->audioKeyCallbacks.count(seqId) > 0) {
++      if (auto callback = takeAudioKeyCallback(seqId)) {
+         auto success = static_cast<RequestType>(packet.command) ==
+                        RequestType::AUDIO_KEY_SUCCESS_RESPONSE;
+-        this->audioKeyCallbacks[seqId](success, packet.data);
++        callback(success, packet.data);
+       }
+ 
+       break;
+@@ -174,10 +219,8 @@ void MercurySession::handlePacket() {
+       CSPOT_LOG(debug, "Received mercury packet");
+ 
+       auto response = this->decodeResponse(packet.data);
+-      if (this->callbacks.count(response.sequenceId) > 0) {
+-        auto seqId = response.sequenceId;
+-        this->callbacks[response.sequenceId](response);
+-        this->callbacks.erase(this->callbacks.find(seqId));
++      if (auto callback = takeCallback(response.sequenceId)) {
++        callback(response);
+       }
+       break;
+     }
+@@ -185,9 +228,13 @@ void MercurySession::handlePacket() {
+       auto response = decodeResponse(packet.data);
+ 
+       auto uri = std::string(response.mercuryHeader.uri);
+-      if (this->subscriptions.count(uri) > 0) {
+-        this->subscriptions[uri](response);
++      ResponseCallback callback;
++      {
++        std::scoped_lock lock(requestsMutex);
++        auto it = subscriptions.find(uri);
++        if (it != subscriptions.end()) callback = it->second;
+       }
++      if (callback) callback(response);
+       break;
+     }
+     default:
+@@ -199,19 +246,26 @@ void MercurySession::failAllPending() {
+   Response response = {};
+   response.fail = true;
+ 
+-  // Fail all callbacks
+-  for (auto& it : this->callbacks) {
+-    it.second(response);
++  decltype(callbacks) failedCallbacks;
++  decltype(subscriptions) failedSubscriptions;
++  decltype(audioKeyCallbacks) failedAudioKeys;
++  {
++    std::scoped_lock lock(requestsMutex);
++    failedCallbacks.swap(callbacks);
++    failedSubscriptions.swap(subscriptions);
++    failedAudioKeys.swap(audioKeyCallbacks);
+   }
+ 
+-  // Fail all subscriptions
+-  for (auto& it : this->subscriptions) {
+-    it.second(response);
++  // Callbacks can take track locks or unregister requests; never hold our lock.
++  for (auto& it : failedCallbacks) {
++    if (it.second) it.second(response);
++  }
++  for (auto& it : failedSubscriptions) {
++    if (it.second) it.second(response);
++  }
++  for (auto& it : failedAudioKeys) {
++    if (it.second) it.second(false, {});
+   }
+-
+-  // Remove references
+-  this->subscriptions = {};
+-  this->callbacks = {};
+ }
+ 
+ MercurySession::Response MercurySession::decodeResponse(
+@@ -252,6 +306,7 @@ uint64_t MercurySession::executeSubscription(RequestType method,
+             RequestTypeMap[method].c_str());
+ 
+   // Encode header
++  Header tempMercuryHeader = {};
+   pbPutString(uri, tempMercuryHeader.uri);
+   pbPutString(RequestTypeMap[method], tempMercuryHeader.method);
+ 
+@@ -264,19 +319,21 @@ uint64_t MercurySession::executeSubscription(RequestType method,
+     method = RequestType::SEND;
+   }
+ 
+-  if (method == RequestType::SUB) {
+-    this->subscriptions.insert({uri, subscription});
+-  }
+-
+   auto headerBytes = pbEncode(Header_fields, &tempMercuryHeader);
+ 
+-  this->callbacks.insert({sequenceId, callback});
++  uint64_t requestId;
++  {
++    std::scoped_lock lock(requestsMutex);
++    requestId = sequenceId++;
++    callbacks.emplace(requestId, std::move(callback));
++    if (method == RequestType::SUB) subscriptions[uri] = std::move(subscription);
++  }
+ 
+   // Structure: [Sequence size] [SequenceId] [0x1] [Payloads number]
+   // [Header size] [Header] [Payloads (size + data)]
+ 
+   // Pack sequenceId
+-  auto sequenceIdBytes = pack<uint64_t>(hton64(this->sequenceId));
++  auto sequenceIdBytes = pack<uint64_t>(hton64(requestId));
+   auto sequenceSizeBytes = pack<uint16_t>(htons(sequenceIdBytes.size()));
+ 
+   sequenceIdBytes.insert(sequenceIdBytes.begin(), sequenceSizeBytes.begin(),
+@@ -302,18 +359,20 @@ uint64_t MercurySession::executeSubscription(RequestType method,
+                            payload[x].end());
+   }
+ 
+-  // Bump sequence id
+-  this->sequenceId += 1;
+-
+   try {
+-    this->shanConn->sendPacket(
++    sendPacket(
+         static_cast<std::underlying_type<RequestType>::type>(method),
+         sequenceIdBytes);
+-  } catch (...) {
+-    // @TODO: handle disconnect
++  } catch (const std::exception& e) {
++    CSPOT_LOG(error, "Mercury request send failed: %s", e.what());
++    if (auto failedCallback = takeCallback(requestId)) {
++      Response response = {};
++      response.fail = true;
++      failedCallback(response);
++    }
+   }
+ 
+-  return this->sequenceId - 1;
++  return requestId;
+ }
+ 
+ uint32_t MercurySession::requestAudioKey(const std::vector<uint8_t>& trackId,
+@@ -322,26 +381,31 @@ uint32_t MercurySession::requestAudioKey(const std::vector<uint8_t>& trackId,
+   auto buffer = fileId;
+ 
+   // Store callback
+-  this->audioKeyCallbacks.insert({this->audioKeySequence, audioCallback});
++  uint32_t requestId;
++  {
++    std::scoped_lock lock(requestsMutex);
++    requestId = audioKeySequence++;
++    audioKeyCallbacks.emplace(requestId, std::move(audioCallback));
++  }
+ 
+   // Structure: [FILEID] [TRACKID] [4 BYTES SEQUENCE ID] [0x00, 0x00]
+   buffer.insert(buffer.end(), trackId.begin(), trackId.end());
+-  auto audioKeySequenceBuffer = pack<uint32_t>(htonl(this->audioKeySequence));
++  auto audioKeySequenceBuffer = pack<uint32_t>(htonl(requestId));
+   buffer.insert(buffer.end(), audioKeySequenceBuffer.begin(),
+                 audioKeySequenceBuffer.end());
+   auto suffix = std::vector<uint8_t>({0x00, 0x00});
+   buffer.insert(buffer.end(), suffix.begin(), suffix.end());
+ 
+-  // Bump audio key sequence
+-  this->audioKeySequence += 1;
+-
+   // Used for broken connection detection
+   // this->lastRequestTimestamp = timeProvider->getSyncedTimestamp();
+   try {
+-    this->shanConn->sendPacket(
++    sendPacket(
+         static_cast<uint8_t>(RequestType::AUDIO_KEY_REQUEST_COMMAND), buffer);
+-  } catch (...) {
+-    // @TODO: Handle disconnect
++  } catch (const std::exception& e) {
++    CSPOT_LOG(error, "Audio key request send failed: %s", e.what());
++    if (auto failedCallback = takeAudioKeyCallback(requestId)) {
++      failedCallback(false, {});
++    }
+   }
+-  return audioKeySequence - 1;
++  return requestId;
+ }
+diff --git a/cspot/src/TrackQueue.cpp b/cspot/src/TrackQueue.cpp
+index 26ec0a2..0a0ffc6 100644
+--- a/cspot/src/TrackQueue.cpp
++++ b/cspot/src/TrackQueue.cpp
+@@ -245,28 +245,28 @@ void QueuedTrack::stepParseMetadata(Track* pbTrack, Episode* pbEpisode) {
+ void QueuedTrack::stepLoadAudioFile(
+     std::mutex& trackListMutex,
+     std::shared_ptr<bell::WrappedSemaphore> updateSemaphore) {
+-  // Request audio key
++  state = State::PENDING_KEY;
+   this->pendingAudioKeyRequest = ctx->session->requestAudioKey(
+       trackId, fileId,
+-      [this, &trackListMutex, updateSemaphore](
++      [weak = weak_from_this(), &trackListMutex, updateSemaphore](
+           bool success, const std::vector<uint8_t>& audioKey) {
++        auto self = weak.lock();
++        if (!self) return;
+         std::scoped_lock lock(trackListMutex);
+ 
+         if (success) {
+           CSPOT_LOG(info, "Got audio key");
+-          this->audioKey =
++          self->audioKey =
+               std::vector<uint8_t>(audioKey.begin() + 4, audioKey.end());
+ 
+-          state = State::CDN_REQUIRED;
++          self->state = State::CDN_REQUIRED;
+         } else {
+           CSPOT_LOG(error, "Failed to get audio key");
+-          state = State::FAILED;
+-          loadedSemaphore->give();
++          self->state = State::FAILED;
++          self->loadedSemaphore->give();
+         }
+         updateSemaphore->give();
+       });
+-
+-  state = State::PENDING_KEY;
+ }
+ 
+ void QueuedTrack::stepLoadCDNUrl(const std::string& accessKey) {
+@@ -329,20 +329,22 @@ void QueuedTrack::stepLoadMetadata(
+       ref.type == TrackReference::Type::TRACK ? "track" : "episode",
+       bytesToHexString(ref.gid).c_str());
+ 
+-  auto responseHandler = [this, pbTrack, pbEpisode, &trackListMutex,
++  auto responseHandler = [weak = weak_from_this(), pbTrack, pbEpisode, &trackListMutex,
+                           updateSemaphore](MercurySession::Response& res) {
++    auto self = weak.lock();
++    if (!self) return;
+     std::scoped_lock lock(trackListMutex);
+ 
+     if (res.parts.size() == 0) {
+       // Invalid metadata, cannot proceed
+-      state = State::FAILED;
++      self->state = State::FAILED;
+       updateSemaphore->give();
+-      loadedSemaphore->give();
++      self->loadedSemaphore->give();
+       return;
+     }
+ 
+     // Parse the metadata
+-    if (ref.type == TrackReference::Type::TRACK) {
++    if (self->ref.type == TrackReference::Type::TRACK) {
+       pb_release(Track_fields, pbTrack);
+       pbDecode(*pbTrack, Track_fields, res.parts[0]);
+     } else {
+@@ -351,16 +353,14 @@ void QueuedTrack::stepLoadMetadata(
+     }
+ 
+     // Parse received metadata
+-    stepParseMetadata(pbTrack, pbEpisode);
++    self->stepParseMetadata(pbTrack, pbEpisode);
+ 
+     updateSemaphore->give();
+   };
++  state = State::PENDING_META;
+   // Execute the request
+   pendingMercuryRequest = ctx->session->execute(
+       MercurySession::RequestType::GET, requestUrl, responseHandler);
+-
+-  // Set the state to pending
+-  state = State::PENDING_META;
+ }
+ 
+ TrackQueue::TrackQueue(std::shared_ptr<cspot::Context> ctx,

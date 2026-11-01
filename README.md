@@ -93,5 +93,21 @@ under *Spotify ESP*.
 
 ## Notes
 
-- `patches/nanopb-protobuf7.patch` and `patches/cspot-login-mac.patch` fix cspot for current protobuf and error handling (applied by `setup.sh`).
+- Dependency fixes in `patches/` are applied by both `setup.sh` and `flash.sh`,
+  including on existing checkouts. Conflicting patches stop the build instead
+  of silently building unpatched sources.
+- `cspot-reconnect.patch` gives the Spotify dispatcher a 32 KB PSRAM stack for
+  reconnect/authentication, replaces recursive reconnect retries with a loop,
+  and protects connection replacement and pending request callbacks across tasks.
+  Serial logs report its minimum free stack after reconnects and Spotify pings.
+- Boot logs include `esp_reset_reason()` (4 = panic, 9 = brownout). A firmware
+  update preserves the WiFi settings saved in NVS.
 - Volume is applied in software in `main/I2SAudioSink.cpp`.
+
+The reconnect regression test compiles the patched session implementation with a
+fake transport, using Clang and AddressSanitizer/UndefinedBehaviorSanitizer:
+`bash patches/apply.sh && python3 tests/test_reconnect.py`. It covers repeated
+failures, cancellation, callback delivery, and concurrent connection replacement;
+hardware playback is still needed to check the actual ESP32 stack headroom.
+`python3 tests/test_patches.py` checks clean-checkout patch application, repeat
+application, and rejection of conflicting dependency edits.

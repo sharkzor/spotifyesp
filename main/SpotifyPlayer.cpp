@@ -34,7 +34,7 @@ SpotifyPlayer::SpotifyPlayer(std::unique_ptr<AudioSink> sink,
   auto hashFunc = std::hash<std::string_view>();
 
   this->handler->getTrackPlayer()->setDataCallback(
-      [this, &hashFunc](uint8_t* data, size_t bytes, std::string_view trackId) {
+      [this, hashFunc](uint8_t* data, size_t bytes, std::string_view trackId) {
         auto hash = hashFunc(trackId);
 
         return this->centralAudioBuffer->writePCM(data, bytes, hash);
