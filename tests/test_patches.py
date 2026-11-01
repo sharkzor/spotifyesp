@@ -14,6 +14,8 @@ PATCHES = (
     ("cspot", "cspot-login-mac.patch"),
     ("cspot/cspot/bell", "bell-civetweb-threads.patch"),
     ("cspot", "cspot-reconnect.patch"),
+    ("cspot", "cspot-stream-errors.patch"),
+    ("cspot/cspot/bell", "bell-http-eof.patch"),
 )
 
 

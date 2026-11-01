@@ -100,6 +100,10 @@ under *Spotify ESP*.
   reconnect/authentication, replaces recursive reconnect retries with a loop,
   and protects connection replacement and pending request callbacks across tasks.
   Serial logs report its minimum free stack after reconnects and Spotify pings.
+- `bell-http-eof.patch` makes the HTTP parser throw on a closed connection
+  instead of writing before its buffer. `cspot-stream-errors.patch` catches
+  stream open/read/seek and Vorbis init failures so a bad track is skipped
+  rather than ending playback.
 - Boot logs include `esp_reset_reason()` (4 = panic, 9 = brownout). A firmware
   update preserves the WiFi settings saved in NVS.
 - Volume is applied in software in `main/I2SAudioSink.cpp`.
@@ -111,3 +115,5 @@ failures, cancellation, callback delivery, and concurrent connection replacement
 hardware playback is still needed to check the actual ESP32 stack headroom.
 `python3 tests/test_patches.py` checks clean-checkout patch application, repeat
 application, and rejection of conflicting dependency edits.
+`python3 tests/test_http_eof.py` runs the real HTTP parser under AddressSanitizer
+against a closed connection.
