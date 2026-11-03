@@ -1,6 +1,25 @@
 # Suggested features
 
-Ideas that are not implemented yet.
+Remaining work and ideas that are not implemented yet.
+
+## Validation before more playback changes
+
+- [ ] Verify reconnect during active playback using a controlled interruption
+  affecting only this board. Two idle reconnects succeeded without a panic, but
+  audio resumption after a reconnect has not been verified.
+- [ ] Run longer normal-use playback sessions. The PSRAM buffer change and startup
+  task cleanup each completed a 30-minute capture with audio through the end.
+  After both changes, the final capture showed about 64 KB free internal RAM,
+  with a sampled minimum of about 58 KB.
+
+Keep WiFi buffer counts, PCM queue capacity and playback-task stacks unchanged.
+Implement and validate future changes individually.
+
+## Remember Spotify login
+
+- [ ] Persist reusable Spotify credentials with protected storage and a
+  "forget account" action. Reconnect after reboot without requiring a fresh
+  login from the Spotify app; handle expired or rejected credentials explicitly.
 
 ## Fixed line-level volume
 
@@ -13,3 +32,15 @@ and the Spotify slider would otherwise change the line level.
 
 Note: the PCM5102A outputs about 2.1 Vrms at full scale, so check the amp's input
 sensitivity.
+
+## Later playback improvements
+
+- [ ] Optional track/album loudness normalization with clipping protection.
+- [ ] PSRAM-backed read-ahead and bounded retry/resume for recoverable stream
+  failures, rather than immediately skipping the track.
+- [ ] Improve gapless transitions by preparing the next audio stream earlier.
+- [ ] Review newer Spotify metadata endpoints and receiver-side queue handling,
+  using librespot as a reference. Consider shuffle/repeat and autoplay separately.
+
+These are candidates, not promises of compatibility or small changes. A full
+librespot port and Spotify lossless support are not planned.

@@ -22,3 +22,4 @@ apply_patch cspot cspot-reconnect.patch
 apply_patch cspot cspot-stream-errors.patch
 apply_patch cspot/cspot/bell bell-http-eof.patch
 apply_patch cspot cspot-bitrate.patch
+apply_patch cspot cspot-stream-psram.patch

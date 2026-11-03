@@ -246,8 +246,9 @@ void app_main(void) {
            deviceName.c_str());
 
   bell::setDefaultLogger();
-  xTaskCreatePinnedToCoreWithCaps(CSpotTask::entry, "cspot", 32 * 1024, nullptr,
-                                  5, nullptr, 1,
-                                  MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  vTaskSuspend(NULL);
+  BaseType_t created = xTaskCreatePinnedToCoreWithCaps(
+      CSpotTask::entry, "cspot", 32 * 1024, nullptr, 5, nullptr, 1,
+      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  ESP_ERROR_CHECK(created == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
+  // Returning lets ESP-IDF reclaim the main task's stack after local cleanup.
 }

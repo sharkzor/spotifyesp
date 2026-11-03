@@ -111,6 +111,14 @@ under *Spotify ESP*.
   to third-party receivers.
 - Boot logs include `esp_reset_reason()` (4 = panic, 9 = brownout). A firmware
   update preserves the WiFi settings saved in NVS.
+- `cspot-stream-psram.patch` explicitly allocates the CDN header, footer and read
+  buffers in PSRAM on ESP32, without reducing their sizes. Allocation failures
+  are logged and passed to the player's stream-open error handler; they do not
+  fall back to scarce internal RAM. Native builds retain standard allocation.
+  WiFi/DMA buffers, PCM queue capacity and task stack sizes are unchanged.
+- After starting the receiver, `app_main()` returns so ESP-IDF can reclaim its
+  8 KB task stack and task resources. Settings needed during playback are copied
+  before startup returns; WiFi event handling and the setup button remain active.
 - Volume is applied in software in `main/I2SAudioSink.cpp`.
 
 The reconnect regression test compiles the patched session implementation with a
@@ -122,3 +130,14 @@ hardware playback is still needed to check the actual ESP32 stack headroom.
 application, and rejection of conflicting dependency edits.
 `python3 tests/test_http_eof.py` runs the real HTTP parser under AddressSanitizer
 against a closed connection.
+`python3 tests/test_stream_psram.py` checks the real CDN stream with fake HTTP,
+crypto and ESP32 allocation APIs under ASan/UBSan: buffer sizes, read/seek
+behavior, repeated open/close, and allocation-failure cleanup.
+
+On the N16R8 board, separate 30-minute playback captures on 2026-11-03 confirmed
+the PSRAM change and startup cleanup. With both changes, sampled free internal
+RAM stayed above 57,991 bytes and ended at 63,595 bytes, compared with about
+18 KB before optimization. The largest free internal/DMA block stayed at
+31,744 bytes. These are sampled observations, not guaranteed memory bounds.
+Active-playback reconnect recovery and longer sessions remain on the checklist
+in [IDEAS.md](IDEAS.md).

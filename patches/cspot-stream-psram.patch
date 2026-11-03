@@ -1,0 +1,111 @@
+diff --git a/cspot/include/CDNAudioFile.h b/cspot/include/CDNAudioFile.h
+index 90cf828..3e5904e 100644
+--- a/cspot/include/CDNAudioFile.h
++++ b/cspot/include/CDNAudioFile.h
+@@ -8,6 +8,7 @@
+ 
+ #include "Crypto.h"      // for Crypto
+ #include "HTTPClient.h"  // for HTTPClient
++#include "StreamBuffer.h"
+ 
+ namespace bell {
+ class WrappedSemaphore;
+@@ -61,11 +62,11 @@ class CDNAudioFile {
+   const int SPOTIFY_OPUS_HEADER = 167;
+ 
+   // Used to store opus metadata, speeds up read
+-  std::vector<uint8_t> header = std::vector<uint8_t>(OPUS_HEADER_SIZE);
+-  std::vector<uint8_t> footer;
++  StreamBuffer header;
++  StreamBuffer footer;
+ 
+   // General purpose buffer to read data
+-  std::vector<uint8_t> httpBuffer = std::vector<uint8_t>(HTTP_BUFFER_SIZE);
++  StreamBuffer httpBuffer;
+ 
+   // AES IV for decrypting the audio stream
+   const std::vector<uint8_t> audioAESIV = {0x72, 0xe0, 0x67, 0xfb, 0xdd, 0xcb,
+diff --git a/cspot/src/CDNAudioFile.cpp b/cspot/src/CDNAudioFile.cpp
+index f58ea07..d4ae1b3 100644
+--- a/cspot/src/CDNAudioFile.cpp
++++ b/cspot/src/CDNAudioFile.cpp
+@@ -42,6 +42,10 @@ void CDNAudioFile::seek(size_t newPos) {
+ void CDNAudioFile::openStream() {
+   CSPOT_LOG(info, "Opening HTTP stream to %s", this->cdnUrl.c_str());
+ 
++  // Allocate here so the player's stream-open error handler also covers OOM.
++  header = StreamBuffer(OPUS_HEADER_SIZE);
++  httpBuffer = StreamBuffer(HTTP_BUFFER_SIZE);
++
+   // Open connection, read first 128 bytes
+   this->httpConnection = bell::HTTPClient::get(
+       this->cdnUrl,
+@@ -58,7 +62,7 @@ void CDNAudioFile::openStream() {
+       (this->totalFileSize - OPUS_FOOTER_PREFFERED + SPOTIFY_OPUS_HEADER) -
+       (this->totalFileSize - OPUS_FOOTER_PREFFERED + SPOTIFY_OPUS_HEADER) % 16;
+ 
+-  this->footer = std::vector<uint8_t>(
++  this->footer = StreamBuffer(
+       this->totalFileSize - footerStartLocation + SPOTIFY_OPUS_HEADER);
+   this->httpConnection->get(
+       cdnUrl, {bell::HTTPClient::RangeHeader::last(footer.size())});
+diff --git a/cspot/include/StreamBuffer.h b/cspot/include/StreamBuffer.h
+new file mode 100644
+index 0000000..ea0327a
+--- /dev/null
++++ b/cspot/include/StreamBuffer.h
+@@ -0,0 +1,54 @@
++#pragma once
++
++#include <cstdint>
++#include <vector>
++
++#ifdef ESP_PLATFORM
++#include <limits>
++#include <new>
++
++#include "esp_heap_caps.h"
++#include "esp_log.h"
++#endif
++
++namespace cspot {
++
++#ifdef ESP_PLATFORM
++template <typename T>
++struct StreamAllocator {
++  using value_type = T;
++
++  StreamAllocator() = default;
++  template <typename U>
++  StreamAllocator(const StreamAllocator<U>&) noexcept {}
++
++  T* allocate(std::size_t count) {
++    if (count > std::numeric_limits<std::size_t>::max() / sizeof(T)) {
++      throw std::bad_array_new_length();
++    }
++    auto* memory = static_cast<T*>(
++        heap_caps_malloc(count * sizeof(T), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
++    if (!memory) {
++      ESP_LOGE("cspot", "Cannot allocate %u bytes of stream buffer in PSRAM",
++               static_cast<unsigned>(count * sizeof(T)));
++      throw std::bad_alloc();
++    }
++    return memory;
++  }
++
++  void deallocate(T* memory, std::size_t) noexcept {
++    heap_caps_free(memory);
++  }
++
++  template <typename U>
++  bool operator==(const StreamAllocator<U>&) const noexcept {
++    return true;
++  }
++};
++
++using StreamBuffer = std::vector<uint8_t, StreamAllocator<uint8_t>>;
++#else
++using StreamBuffer = std::vector<uint8_t>;
++#endif
++
++}  // namespace cspot
