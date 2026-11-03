@@ -1,6 +1,7 @@
 #include "WifiSetup.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <vector>
@@ -48,6 +49,10 @@ char captivePortalUri[32];
 
 // ---------- NVS ----------
 
+bool validBitrate(uint32_t kbps) {
+  return kbps == 96 || kbps == 160 || kbps == 320;
+}
+
 bool readStr(nvs_handle_t h, const char* key, std::string& out) {
   size_t len = 0;
   if (nvs_get_str(h, key, nullptr, &len) != ESP_OK || len <= 1) return false;
@@ -64,6 +69,7 @@ bool save(const Settings& s) {
   esp_err_t err = nvs_set_str(h, "ssid", s.ssid.c_str());
   if (err == ESP_OK) err = nvs_set_str(h, "pass", s.password.c_str());
   if (err == ESP_OK) err = nvs_set_str(h, "name", s.deviceName.c_str());
+  if (err == ESP_OK) err = nvs_set_u32(h, "kbps", s.bitrate);
   if (err == ESP_OK) err = nvs_commit(h);
   nvs_close(h);
   return err == ESP_OK;
@@ -223,6 +229,14 @@ esp_err_t rootGet(httpd_req_t* req) {
   body += "</small><label>Device name in Spotify<input name=\"name\" maxlength=\"32\" "
           "required value=\"" +
           htmlEscape(currentSettings.deviceName) + "\"></label>";
+  body += "<label>Streaming quality<select name=\"kbps\">";
+  for (uint32_t kbps : {320u, 160u, 96u}) {
+    body += "<option value=\"" + std::to_string(kbps) + "\"" +
+            (kbps == currentSettings.bitrate ? " selected" : "") + ">" +
+            std::to_string(kbps) + " kbps" +
+            (kbps == 320 ? " (best, needs Premium)" : "") + "</option>";
+  }
+  body += "</select></label>";
   body += "<button type=\"submit\">Save and restart</button></form>";
   return sendHtml(req, "200 OK", body);
 }
@@ -265,6 +279,10 @@ esp_err_t savePost(httpd_req_t* req) {
   s.ssid = fields["ssid"];
   s.password = fields["pass"];
   s.deviceName = trim(fields["name"]);
+  s.bitrate = static_cast<uint32_t>(strtoul(fields["kbps"].c_str(), nullptr, 10));
+  if (!validBitrate(s.bitrate)) {
+    return formError(req, "Pick a streaming quality from the list.");
+  }
 
   if (s.ssid.empty() || s.ssid.size() > 32) {
     return formError(req, "The WiFi network name must be 1 to 32 characters.");
@@ -442,6 +460,10 @@ bool load(Settings& out) {
   bool haveSsid = readStr(h, "ssid", out.ssid);
   readStr(h, "pass", out.password);
   readStr(h, "name", out.deviceName);
+  uint32_t kbps = 0;
+  if (nvs_get_u32(h, "kbps", &kbps) == ESP_OK && validBitrate(kbps)) {
+    out.bitrate = kbps;
+  }
   nvs_close(h);
   return haveSsid;
 }

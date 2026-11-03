@@ -105,8 +105,10 @@ under *Spotify ESP*.
   stream open/read/seek and Vorbis init failures so a bad track is skipped
   rather than ending playback.
 - `cspot-bitrate.patch` streams Ogg Vorbis at 320 kbps (Premium), falling back
-  to 160 then 96 kbps when a track has no 320 kbps file. The Spotify app's
-  quality setting does not apply to Connect receivers.
+  to 160 then 96 kbps when a track has no 320 kbps file. The quality (96, 160
+  or 320 kbps) is chosen in the setup portal and saved in NVS. The Spotify app's
+  quality setting does not apply to Connect receivers. Lossless is not available
+  to third-party receivers.
 - Boot logs include `esp_reset_reason()` (4 = panic, 9 = brownout). A firmware
   update preserves the WiFi settings saved in NVS.
 - Volume is applied in software in `main/I2SAudioSink.cpp`.

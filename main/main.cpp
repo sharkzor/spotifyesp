@@ -48,6 +48,7 @@ static constexpr uint32_t PORTAL_IDLE_REBOOT_MS = 5 * 60 * 1000;
 static std::atomic<int> wifiRetries = 0;
 static std::atomic<bool> wifiEverConnected = false;
 static std::string deviceName;
+static uint32_t bitrateKbps = 320;
 
 static void wifiEventHandler(void*, esp_event_base_t base, int32_t id, void*) {
   if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
@@ -166,6 +167,11 @@ class CSpotTask {
 
     BELL_LOG(info, "cspot", "Got blob!");
     auto ctx = cspot::Context::createFromBlob(blob);
+    ctx->config.audioFormat =
+        bitrateKbps == 96    ? AudioFormat_OGG_VORBIS_96
+        : bitrateKbps == 160 ? AudioFormat_OGG_VORBIS_160
+                             : AudioFormat_OGG_VORBIS_320;
+    CSPOT_LOG(info, "Streaming quality: %u kbps", (unsigned)bitrateKbps);
     CSPOT_LOG(info, "Creating player");
     bool connected = false;
     for (int attempt = 0; attempt < 5 && !connected; attempt++) {
@@ -234,6 +240,7 @@ void app_main(void) {
     wifi_setup::restartIntoPortal();
   }
   deviceName = settings.deviceName;
+  bitrateKbps = settings.bitrate;
   wifi_setup::startButtonWatcher(CONFIG_SPOTIFY_SETUP_BUTTON_GPIO);
   ESP_LOGI(TAG, "Connected to WiFi, starting Spotify receiver as '%s'",
            deviceName.c_str());

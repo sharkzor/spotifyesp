@@ -10,6 +10,8 @@ struct Settings {
   std::string ssid;
   std::string password;
   std::string deviceName;
+  // Streaming quality in kbps: 96, 160 or 320.
+  uint32_t bitrate = 320;
 };
 
 // Loads the settings saved by the portal. Fields that were never saved stay empty.
