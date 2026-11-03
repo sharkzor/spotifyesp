@@ -16,6 +16,7 @@ PATCHES = (
     ("cspot", "cspot-reconnect.patch"),
     ("cspot", "cspot-stream-errors.patch"),
     ("cspot/cspot/bell", "bell-http-eof.patch"),
+    ("cspot", "cspot-bitrate.patch"),
 )
 
 

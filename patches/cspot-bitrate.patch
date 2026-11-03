@@ -1,0 +1,54 @@
+diff --git a/cspot/src/TrackQueue.cpp b/cspot/src/TrackQueue.cpp
+index 0a0ffc6..7a9da78 100644
+--- a/cspot/src/TrackQueue.cpp
++++ b/cspot/src/TrackQueue.cpp
+@@ -212,6 +212,8 @@ void QueuedTrack::stepParseMetadata(Track* pbTrack, Episode* pbEpisode) {
+   }
+ 
+   // Find playable file
++  std::vector<uint8_t> fallbackFileId;
++  AudioFormat fallbackFormat = AudioFormat_OGG_VORBIS_96;
+   for (int x = 0; x < filesCount; x++) {
+     CSPOT_LOG(debug, "File format: %d", selectedFiles[x].format);
+     if (selectedFiles[x].format == ctx->config.audioFormat) {
+@@ -219,13 +221,21 @@ void QueuedTrack::stepParseMetadata(Track* pbTrack, Episode* pbEpisode) {
+       break;  // If file found stop searching
+     }
+ 
+-    // Fallback to OGG Vorbis 96kbps
+-    if (fileId.size() == 0 &&
+-        selectedFiles[x].format == AudioFormat_OGG_VORBIS_96) {
+-      fileId = pbArrayToVector(selectedFiles[x].file_id);
++    // Fallback to the best lower quality: 160kbps, then 96kbps
++    if (selectedFiles[x].format == AudioFormat_OGG_VORBIS_160) {
++      fallbackFormat = selectedFiles[x].format;
++      fallbackFileId = pbArrayToVector(selectedFiles[x].file_id);
++    } else if (selectedFiles[x].format == AudioFormat_OGG_VORBIS_96 &&
++               fallbackFormat != AudioFormat_OGG_VORBIS_160) {
++      fallbackFormat = selectedFiles[x].format;
++      fallbackFileId = pbArrayToVector(selectedFiles[x].file_id);
+     }
+   }
+ 
++  if (fileId.size() == 0) {
++    fileId = fallbackFileId;
++  }
++
+   // No viable files found for playback
+   if (fileId.size() == 0) {
+     CSPOT_LOG(info, "File not available for playback");
+diff --git a/cspot/include/CSpotContext.h b/cspot/include/CSpotContext.h
+index d4fdde8..101afd0 100644
+--- a/cspot/include/CSpotContext.h
++++ b/cspot/include/CSpotContext.h
+@@ -20,8 +20,8 @@
+ namespace cspot {
+ struct Context {
+   struct ConfigState {
+-    // Setup default bitrate to 160
+-    AudioFormat audioFormat = AudioFormat::AudioFormat_OGG_VORBIS_160;
++    // Prefer the highest quality (Premium); TrackQueue falls back to lower ones
++    AudioFormat audioFormat = AudioFormat::AudioFormat_OGG_VORBIS_320;
+     std::string deviceId;
+     std::string deviceName;
+     std::vector<uint8_t> authData;
