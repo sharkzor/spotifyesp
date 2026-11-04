@@ -17,9 +17,11 @@ Implement and validate future changes individually.
 
 ## Remember Spotify login
 
-- [ ] Persist reusable Spotify credentials with protected storage and a
-  "forget account" action. Reconnect after reboot without requiring a fresh
-  login from the Spotify app; handle expired or rejected credentials explicitly.
+- [x] Implemented on the `improvements` branch: reusable credentials are saved in
+  NVS (unencrypted), a rejected login is erased, and the portal has a "Forget the
+  saved Spotify login" checkbox. Built but **not yet tested on hardware**: check a
+  first login, a reboot without the phone, and the forget checkbox.
+- [ ] Optional: enable NVS/flash encryption to protect the stored credentials.
 
 ## Fixed line-level volume
 

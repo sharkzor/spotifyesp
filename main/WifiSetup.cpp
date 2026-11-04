@@ -31,6 +31,7 @@ namespace {
 
 const char* TAG = "wifi_setup";
 const char* NVS_NAMESPACE = "spotifyesp";
+const size_t MAX_LOGIN_BYTES = 1024;
 constexpr uint32_t PORTAL_MAGIC = 0x57495349;
 constexpr size_t MAX_BODY = 1024;
 constexpr size_t MAX_NETWORKS = 20;
@@ -237,6 +238,8 @@ esp_err_t rootGet(httpd_req_t* req) {
             (kbps == 320 ? " (best, needs Premium)" : "") + "</option>";
   }
   body += "</select></label>";
+  body += "<label><input type=\"checkbox\" name=\"forget\" value=\"1\"> Forget the saved "
+          "Spotify login</label>";
   body += "<button type=\"submit\">Save and restart</button></form>";
   return sendHtml(req, "200 OK", body);
 }
@@ -296,6 +299,8 @@ esp_err_t savePost(httpd_req_t* req) {
   if (s.deviceName.empty() || s.deviceName.size() > 32) {
     return formError(req, "The device name must be 1 to 32 characters.");
   }
+
+  if (fields["forget"] == "1") clearLogin();
 
   if (!save(s)) {
     return sendHtml(req, "500 Internal Server Error",
@@ -466,6 +471,51 @@ bool load(Settings& out) {
   }
   nvs_close(h);
   return haveSsid;
+}
+
+bool loadLogin(SavedLogin& out) {
+  nvs_handle_t h;
+  if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
+  std::string user;
+  size_t len = 0;
+  bool ok = readStr(h, "spuser", user) &&
+            nvs_get_blob(h, "spauth", nullptr, &len) == ESP_OK && len > 0 &&
+            len <= MAX_LOGIN_BYTES;
+  if (ok) {
+    std::vector<uint8_t> creds(len);
+    ok = nvs_get_blob(h, "spauth", creds.data(), &len) == ESP_OK && len == creds.size();
+    if (ok) {
+      out.username = user;
+      out.credentials = std::move(creds);
+    }
+  }
+  nvs_close(h);
+  return ok;
+}
+
+bool saveLogin(const SavedLogin& login) {
+  if (login.username.empty() || login.credentials.empty() ||
+      login.credentials.size() > MAX_LOGIN_BYTES) {
+    return false;
+  }
+  nvs_handle_t h;
+  if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return false;
+  esp_err_t err = nvs_set_str(h, "spuser", login.username.c_str());
+  if (err == ESP_OK) {
+    err = nvs_set_blob(h, "spauth", login.credentials.data(), login.credentials.size());
+  }
+  if (err == ESP_OK) err = nvs_commit(h);
+  nvs_close(h);
+  return err == ESP_OK;
+}
+
+void clearLogin() {
+  nvs_handle_t h;
+  if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;
+  nvs_erase_key(h, "spuser");
+  nvs_erase_key(h, "spauth");
+  nvs_commit(h);
+  nvs_close(h);
 }
 
 bool consumePortalRequest() {

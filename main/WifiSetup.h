@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <vector>
 
 // WiFi setup portal: the board opens its own access point with a captive web page
 // where the WiFi network and the Spotify device name can be entered.
@@ -17,6 +18,18 @@ struct Settings {
 // Loads the settings saved by the portal. Fields that were never saved stay empty.
 // Returns true when a WiFi SSID is stored.
 bool load(Settings& out);
+
+// Reusable Spotify credentials returned after a successful login, so the board can
+// sign in again after a reboot without the phone sending them.
+struct SavedLogin {
+  std::string username;
+  std::vector<uint8_t> credentials;
+};
+
+// Returns true when a complete saved login exists.
+bool loadLogin(SavedLogin& out);
+bool saveLogin(const SavedLogin& login);
+void clearLogin();
 
 // True when the previous boot asked for the portal. The request is cleared.
 bool consumePortalRequest();

@@ -68,8 +68,10 @@ The project builds with ESP-IDF 5.5. `env.sh` reuses the toolchain that ESPHome
 downloads into `~/Library/Caches/esphome/idf`; with a normal ESP-IDF install,
 export your own environment instead and adjust `env.sh`.
 
-Open Spotify, press the *Devices* button and pick the device name. The login is
-not stored, so after a reboot you have to select the device again in the app.
+Open Spotify, press the *Devices* button and pick the device name. After the first
+login the board saves Spotify's reusable credentials in NVS and signs in again by
+itself after a reboot; you still start playback from the app. Tick *Forget the saved
+Spotify login* in the setup portal to remove them. NVS is not encrypted.
 
 ## WiFi setup portal
 

@@ -160,6 +160,18 @@ class CSpotTask {
         blob->getDeviceName(), "_spotify-connect", "_tcp", "", 8080,
         {{"VERSION", "1.0"}, {"CPath", "/spotify_info"}, {"Stack", "SP"}});
 
+    // A login saved by an earlier session lets the board sign in without the phone.
+    wifi_setup::SavedLogin saved;
+    bool usingSavedLogin = wifi_setup::loadLogin(saved);
+    if (usingSavedLogin) {
+      blob->username = saved.username;
+      blob->authData = saved.credentials;
+      blob->authType =
+          AuthenticationType_AUTHENTICATION_STORED_SPOTIFY_CREDENTIALS;
+      gotBlob = true;
+      BELL_LOG(info, "cspot", "Using saved Spotify login");
+    }
+
     while (!gotBlob) {
       BELL_SLEEP_MS(1000);
       BELL_LOG(info, "cspot", "Waiting for spotify app to connect...");
@@ -193,7 +205,20 @@ class CSpotTask {
       esp_restart();
     }
 
+    if (ctx->config.authData.empty() && usingSavedLogin) {
+      // Spotify refused the saved credentials; wait for the phone after the restart.
+      BELL_LOG(error, "cspot", "Saved login rejected, forgetting it");
+      wifi_setup::clearLogin();
+      esp_restart();
+    }
+
     if (ctx->config.authData.size() > 0) {
+      if (!usingSavedLogin || ctx->config.authData != saved.credentials) {
+        wifi_setup::SavedLogin fresh{blob->username, ctx->config.authData};
+        if (!wifi_setup::saveLogin(fresh)) {
+          BELL_LOG(error, "cspot", "Could not save the Spotify login");
+        }
+      }
       auto handler = std::make_shared<cspot::SpircHandler>(ctx);
       ctx->session->startTask();
       auto sink = std::make_unique<I2SAudioSink>(CONFIG_SPOTIFY_I2S_BCLK,
