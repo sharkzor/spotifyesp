@@ -53,7 +53,7 @@ The 5V pad takes 3.7 to 6 V when powering externally.
 ## Build and flash
 
 ```sh
-git clone --recursive <this repo>
+git clone <this repo>
 cd spotifyesp
 ./flash.sh                 # asks for board, WiFi (first time, optional) and port
 ./flash.sh zero-n8r8       # or name the board directly
@@ -95,25 +95,25 @@ under *Spotify ESP*.
 
 ## Notes
 
-- Dependency fixes in `patches/` are applied by both `setup.sh` and `flash.sh`,
-  including on existing checkouts. Conflicting patches stop the build instead
-  of silently building unpatched sources.
-- `cspot-reconnect.patch` gives the Spotify dispatcher a 32 KB PSRAM stack for
-  reconnect/authentication, replaces recursive reconnect retries with a loop,
-  and protects connection replacement and pending request callbacks across tasks.
-  Serial logs report its minimum free stack after reconnects and Spotify pings.
-- `bell-http-eof.patch` makes the HTTP parser throw on a closed connection
-  instead of writing before its buffer. `cspot-stream-errors.patch` catches
-  stream open/read/seek and Vorbis init failures so a bad track is skipped
-  rather than ending playback.
-- `cspot-bitrate.patch` streams Ogg Vorbis at 320 kbps (Premium), falling back
-  to 160 then 96 kbps when a track has no 320 kbps file. The quality (96, 160
-  or 320 kbps) is chosen in the setup portal and saved in NVS. The Spotify app's
-  quality setting does not apply to Connect receivers. Lossless is not available
-  to third-party receivers.
+- cspot and its `bell` support library are vendored in `cspot/` as plain source
+  (see `cspot/UPSTREAM.md` for origin, licence and the changes made here). Our
+  fixes are edited directly in that source; git history shows each change.
+- The Spotify dispatcher has a 32 KB PSRAM stack for reconnect/authentication,
+  loops instead of recursing on reconnect, and protects connection replacement and
+  pending request callbacks across tasks. Serial logs report its minimum free stack
+  after reconnects and Spotify pings.
+- The HTTP parser throws on a closed connection instead of writing before its
+  buffer, and stream open/read/seek and Vorbis init failures are caught so a bad
+  track is skipped rather than ending playback.
+- Audio streams at 320 kbps Ogg Vorbis (Premium), falling back to 160 then 96 kbps
+  when a track has no 320 kbps file. The quality (96, 160 or 320 kbps) is chosen
+  in the setup portal and saved in NVS. The Spotify app's quality setting does not
+  apply to Connect receivers. Lossless is not available to third-party receivers.
+- Track restrictions aimed at other account types (catalogues) are ignored, as in
+  librespot, so Premium tracks aren't reported as unavailable.
 - Boot logs include `esp_reset_reason()` (4 = panic, 9 = brownout). A firmware
   update preserves the WiFi settings saved in NVS.
-- `cspot-stream-psram.patch` explicitly allocates the CDN header, footer and read
+- The CDN stream explicitly allocates the CDN header, footer and read
   buffers in PSRAM on ESP32, without reducing their sizes. Allocation failures
   are logged and passed to the player's stream-open error handler; they do not
   fall back to scarce internal RAM. Native builds retain standard allocation.
@@ -123,13 +123,11 @@ under *Spotify ESP*.
   before startup returns; WiFi event handling and the setup button remain active.
 - Volume is applied in software in `main/I2SAudioSink.cpp`.
 
-The reconnect regression test compiles the patched session implementation with a
+The reconnect regression test compiles the session implementation with a
 fake transport, using Clang and AddressSanitizer/UndefinedBehaviorSanitizer:
-`bash patches/apply.sh && python3 tests/test_reconnect.py`. It covers repeated
+`python3 tests/test_reconnect.py`. It covers repeated
 failures, cancellation, callback delivery, and concurrent connection replacement;
 hardware playback is still needed to check the actual ESP32 stack headroom.
-`python3 tests/test_patches.py` checks clean-checkout patch application, repeat
-application, and rejection of conflicting dependency edits.
 `python3 tests/test_http_eof.py` runs the real HTTP parser under AddressSanitizer
 against a closed connection.
 `python3 tests/test_stream_psram.py` checks the real CDN stream with fake HTTP,

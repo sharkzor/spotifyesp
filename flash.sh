@@ -47,9 +47,8 @@ CONFIG_SPOTIFY_DEVICE_NAME="${NAME:-Spotify ESP}"
 EOF
 fi
 
-[ -f cspot/cspot/bell/external/nanopb/generator/nanopb_generator.py ] || ./setup.sh
-bash ./patches/apply.sh
 . ./env.sh
+python -c "import google.protobuf, grpc_tools" 2>/dev/null || ./setup.sh
 
 if [ -z "$PORT" ] && [ "$BUILD_ONLY" = 0 ]; then
   PORTS=($(ls /dev/cu.usbmodem* /dev/cu.usbserial* /dev/ttyACM* /dev/ttyUSB* 2>/dev/null || true))
