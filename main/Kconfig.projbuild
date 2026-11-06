@@ -35,4 +35,67 @@ menu "Spotify ESP"
         int "I2S data out pin (PCM5102 DIN)"
         default 6
 
+    config SPOTIFY_ETHERNET
+        bool "Use a W5500 SPI Ethernet module (WiFi stays as a fallback)"
+        default n
+
+    config SPOTIFY_ETH_SPI_CLK
+        int "W5500 SPI CLK pin"
+        depends on SPOTIFY_ETHERNET
+        default 12
+
+    config SPOTIFY_ETH_SPI_MOSI
+        int "W5500 SPI MOSI pin"
+        depends on SPOTIFY_ETHERNET
+        default 11
+
+    config SPOTIFY_ETH_SPI_MISO
+        int "W5500 SPI MISO pin"
+        depends on SPOTIFY_ETHERNET
+        default 13
+
+    config SPOTIFY_ETH_CS
+        int "W5500 chip select pin"
+        depends on SPOTIFY_ETHERNET
+        default 10
+
+    config SPOTIFY_ETH_INT
+        int "W5500 interrupt pin"
+        depends on SPOTIFY_ETHERNET
+        default 6
+
+    config SPOTIFY_ETH_RST
+        int "W5500 reset pin (-1 if not connected)"
+        depends on SPOTIFY_ETHERNET
+        default 5
+
+    config SPOTIFY_ETH_TIMEOUT_S
+        int "Seconds to wait for an Ethernet address before falling back to WiFi"
+        depends on SPOTIFY_ETHERNET
+        default 15
+
+    config SPOTIFY_PCM5122
+        bool "Initialise a PCM5122 DAC over I2C (instead of a PCM5102)"
+        default n
+
+    config SPOTIFY_PCM5122_SDA
+        int "PCM5122 I2C SDA pin"
+        depends on SPOTIFY_PCM5122
+        default 42
+
+    config SPOTIFY_PCM5122_SCL
+        int "PCM5122 I2C SCL pin"
+        depends on SPOTIFY_PCM5122
+        default 41
+
+    config SPOTIFY_PCM5122_ADDR
+        int "PCM5122 I2C address (0x4C on rev H, 0x4D on rev H1 and later)"
+        depends on SPOTIFY_PCM5122
+        default 77
+
+    config SPOTIFY_PCM5122_XSMT
+        int "PCM5122 XSMT (unmute) pin, driven high (-1 if not connected)"
+        depends on SPOTIFY_PCM5122
+        default 4
+
 endmenu

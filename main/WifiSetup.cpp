@@ -572,7 +572,8 @@ void runPortal(const Settings& current, uint32_t idleRebootMs) {
   idleMs = idleRebootMs;
 
   ESP_ERROR_CHECK(esp_netif_init());
-  ESP_ERROR_CHECK(esp_event_loop_create_default());
+  esp_err_t loopErr = esp_event_loop_create_default();
+  if (loopErr != ESP_ERR_INVALID_STATE) ESP_ERROR_CHECK(loopErr);
   ESP_ERROR_CHECK(esp_event_handler_register(
       WIFI_EVENT, WIFI_EVENT_AP_STACONNECTED, &apClientEvent, nullptr));
   ESP_ERROR_CHECK(esp_event_handler_register(
