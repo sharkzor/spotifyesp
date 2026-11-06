@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <vector>
 
@@ -473,24 +474,52 @@ bool load(Settings& out) {
   return haveSsid;
 }
 
+namespace {
+// Flash writes disable the cache, which requires an internal-RAM stack. The receiver
+// task's stack lives in PSRAM, so its NVS writes run on a short-lived helper task.
+struct InternalJob {
+  std::function<void()> fn;
+  TaskHandle_t waiter;
+};
+
+bool runOnInternalStack(std::function<void()> fn) {
+  InternalJob job{std::move(fn), xTaskGetCurrentTaskHandle()};
+  BaseType_t created = xTaskCreate(
+      [](void* arg) {
+        auto* j = static_cast<InternalJob*>(arg);
+        j->fn();
+        xTaskNotifyGive(j->waiter);
+        vTaskDelete(nullptr);
+      },
+      "nvs_login", 4096, &job, 5, nullptr);
+  if (created != pdPASS) return false;
+  ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+  return true;
+}
+}  // namespace
+
 bool loadLogin(SavedLogin& out) {
-  nvs_handle_t h;
-  if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return false;
-  std::string user;
-  size_t len = 0;
-  bool ok = readStr(h, "spuser", user) &&
-            nvs_get_blob(h, "spauth", nullptr, &len) == ESP_OK && len > 0 &&
-            len <= MAX_LOGIN_BYTES;
-  if (ok) {
-    std::vector<uint8_t> creds(len);
-    ok = nvs_get_blob(h, "spauth", creds.data(), &len) == ESP_OK && len == creds.size();
+  bool ok = false;
+  bool ran = runOnInternalStack([&] {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &h) != ESP_OK) return;
+    std::string user;
+    size_t len = 0;
+    ok = readStr(h, "spuser", user) &&
+         nvs_get_blob(h, "spauth", nullptr, &len) == ESP_OK && len > 0 &&
+         len <= MAX_LOGIN_BYTES;
     if (ok) {
-      out.username = user;
-      out.credentials = std::move(creds);
+      std::vector<uint8_t> creds(len);
+      ok = nvs_get_blob(h, "spauth", creds.data(), &len) == ESP_OK &&
+           len == creds.size();
+      if (ok) {
+        out.username = user;
+        out.credentials = std::move(creds);
+      }
     }
-  }
-  nvs_close(h);
-  return ok;
+    nvs_close(h);
+  });
+  return ran && ok;
 }
 
 bool saveLogin(const SavedLogin& login) {
@@ -498,24 +527,31 @@ bool saveLogin(const SavedLogin& login) {
       login.credentials.size() > MAX_LOGIN_BYTES) {
     return false;
   }
-  nvs_handle_t h;
-  if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return false;
-  esp_err_t err = nvs_set_str(h, "spuser", login.username.c_str());
-  if (err == ESP_OK) {
-    err = nvs_set_blob(h, "spauth", login.credentials.data(), login.credentials.size());
-  }
-  if (err == ESP_OK) err = nvs_commit(h);
-  nvs_close(h);
-  return err == ESP_OK;
+  esp_err_t err = ESP_FAIL;
+  bool ran = runOnInternalStack([&] {
+    nvs_handle_t h;
+    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h);
+    if (err != ESP_OK) return;
+    err = nvs_set_str(h, "spuser", login.username.c_str());
+    if (err == ESP_OK) {
+      err = nvs_set_blob(h, "spauth", login.credentials.data(),
+                         login.credentials.size());
+    }
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+  });
+  return ran && err == ESP_OK;
 }
 
 void clearLogin() {
-  nvs_handle_t h;
-  if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;
-  nvs_erase_key(h, "spuser");
-  nvs_erase_key(h, "spauth");
-  nvs_commit(h);
-  nvs_close(h);
+  runOnInternalStack([] {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_erase_key(h, "spuser");
+    nvs_erase_key(h, "spauth");
+    nvs_commit(h);
+    nvs_close(h);
+  });
 }
 
 bool consumePortalRequest() {

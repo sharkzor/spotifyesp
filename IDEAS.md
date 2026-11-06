@@ -19,8 +19,10 @@ Implement and validate future changes individually.
 
 - [x] Implemented on the `improvements` branch: reusable credentials are saved in
   NVS (unencrypted), a rejected login is erased, and the portal has a "Forget the
-  saved Spotify login" checkbox. Built but **not yet tested on hardware**: check a
-  first login, a reboot without the phone, and the forget checkbox.
+  saved Spotify login" checkbox. Hardware-verified: first login saves, and a reboot signs in
+  without the phone. Still to check: playback after that reboot and the forget
+  checkbox. NVS access runs on an internal-stack helper task, because flash access
+  from the PSRAM-stack receiver task asserts.
 - [ ] Optional: enable NVS/flash encryption to protect the stored credentials.
 
 ## Fixed line-level volume
