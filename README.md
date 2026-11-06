@@ -141,3 +141,8 @@ RAM stayed above 57,991 bytes and ended at 63,595 bytes, compared with about
 31,744 bytes. These are sampled observations, not guaranteed memory bounds.
 Active-playback reconnect recovery and longer sessions remain on the checklist
 in [IDEAS.md](IDEAS.md).
+
+## Licence
+
+GNU General Public License v3 (see `LICENSE`), because this project includes
+cspot and bell, which are GPLv3 (see `cspot/UPSTREAM.md`).
