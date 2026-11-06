@@ -48,3 +48,8 @@ sensitivity.
 
 These are candidates, not promises of compatibility or small changes. A full
 librespot port and Spotify lossless support are not planned.
+
+## Done on `improvements`
+
+- Track restrictions now ignore rules aimed at other account types (catalogues), as
+  librespot does. Fixed a Premium track that was wrongly reported as unavailable.

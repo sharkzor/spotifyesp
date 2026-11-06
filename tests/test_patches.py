@@ -18,6 +18,7 @@ PATCHES = (
     ("cspot/cspot/bell", "bell-http-eof.patch"),
     ("cspot", "cspot-bitrate.patch"),
     ("cspot", "cspot-stream-psram.patch"),
+    ("cspot", "cspot-restrictions.patch"),
 )
 
 
