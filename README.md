@@ -16,11 +16,11 @@ Tested on an ESP32-S3 with 16 MB flash and 8 MB octal PSRAM.
 
 On the XIAO the wiring is BCK→D4 (GPIO5), LCK→D3 (GPIO4), DIN→D5 (GPIO6). To flash it, hold BOOT while plugging in USB.
 
-### HiFi-ESP32-S3-Plus (Ethernet) — untested
+### HiFi-ESP32-S3-Plus (Ethernet)
 
-This profile builds but has not been run on hardware yet. It uses the board's own pins (I2S 14/15/16, from Sonocotta's firmware repo).
+Tested on a rev H1+ board with the W5500 module: Ethernet gets an address and Spotify audio plays. It uses the board's own pins (I2S 14/15/16, from Sonocotta's firmware repo).
 - **Ethernet:** at boot it tries the W5500 module for `CONFIG_SPOTIFY_ETH_TIMEOUT_S` seconds (default 15). If there is no module, no link or no address, it falls back to WiFi and the setup portal. The BOOT button still opens the portal.
-- **DAC:** the PCM5122 is unmuted through XSMT (GPIO4) and its PLL is set to use the I2S bit clock over I2C (address 0x4D on rev H1 and later, 0x4C on rev H; change `CONFIG_SPOTIFY_PCM5122_ADDR`).
+- **DAC:** the PCM5122 is unmuted through XSMT (GPIO4), reset, and set over I2C to take its clock from the I2S bit clock and to ignore the missing master clock (address 0x4D on rev H1 and later, 0x4C on rev H; change `CONFIG_SPOTIFY_PCM5122_ADDR`).
 - The OLED shares the SPI bus with the Ethernet module, so it is not supported.
 - Software volume is still used; the DAC's digital volume and EQ are not.
 

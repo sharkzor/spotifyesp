@@ -7,6 +7,7 @@
 #include "esp_netif.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "freertos/task.h"
 
 #ifdef CONFIG_SPOTIFY_ETHERNET
 #include "driver/gpio.h"
@@ -169,10 +170,18 @@ void dacInit() {
     return;
   }
 
+  // Same sequence as Sonocotta's PCM5122 driver.
   writeReg(dev, 0x00, 0x00);  // register page 0
-  writeReg(dev, 0x02, 0x00);  // leave standby and power-down
+  writeReg(dev, 0x01, 0x11);  // reset the modules and registers
+  vTaskDelay(pdMS_TO_TICKS(100));
+  writeReg(dev, 0x01, 0x00);
+  vTaskDelay(pdMS_TO_TICKS(100));
+  writeReg(dev, 0x00, 0x00);
+  writeReg(dev, 0x03, 0x00);  // unmute
+  writeReg(dev, 0x2A, 0x11);  // left to left, right to right
+  writeReg(dev, 0x02, 0x00);  // play (leave standby and power-down)
   writeReg(dev, 0x0D, 0x10);  // PLL reference = BCK (SCK is not driven)
-  writeReg(dev, 0x04, 0x01);  // enable the PLL
+  writeReg(dev, 0x25, 0x08);  // ignore a missing MCLK
   ESP_LOGI(TAG, "PCM5122 at 0x%02x configured", CONFIG_SPOTIFY_PCM5122_ADDR);
 }
 
