@@ -158,7 +158,7 @@ cspot and bell, which are GPLv3 (see `cspot/UPSTREAM.md`).
 
 ## Config page and equalizer
 
-Once the board is on the network, open `http://spotifyesp.local/` (or its IP) in a browser. The page edits:
+Once the board is on the network, open `http://<device-name>.local/` in a browser, where the name is your Spotify device name in lower case with dashes ("Spotify Zolder" becomes `spotify-zolder.local`), or use the board's IP. The serial log prints the exact address. The page edits:
 
 - Spotify device name and streaming quality (saving restarts the board; the saved login is kept).
 - A 6-band parametric equalizer (peak, low shelf, high shelf) with pre-gain. Changes apply immediately while playing and are saved.

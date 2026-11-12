@@ -179,7 +179,10 @@ void SpircHandler::handleFrame(std::vector<uint8_t>& data) {
       CSPOT_LOG(debug, "Load frame %d!", playbackState->remoteTracks.size());
 
       if (playbackState->remoteTracks.size() == 0) {
-        CSPOT_LOG(info, "No tracks in frame, stopping playback");
+        CSPOT_LOG(info, "No tracks in frame, stopping playback (context %s)",
+                  playbackState->remoteFrame.state.context_uri
+                      ? playbackState->remoteFrame.state.context_uri
+                      : "none");
         break;
       }
 

@@ -1,6 +1,7 @@
 #include "esp_system.h"
 #include <MDNSService.h>
 #include <atomic>
+#include <cctype>
 #include <memory>
 #include <string>
 
@@ -107,7 +108,22 @@ class CSpotTask {
 
   void runTask() {
     mdns_init();
-    mdns_hostname_set("spotifyesp");
+    // Lower-case letters and digits from the device name, so two boards get different
+    // addresses (for example "Spotify Zolder" becomes spotify-zolder.local).
+    std::string host;
+    for (char c : deviceName) {
+      if (isalnum(static_cast<unsigned char>(c))) {
+        host += static_cast<char>(tolower(static_cast<unsigned char>(c)));
+      } else if (!host.empty() && host.back() != '-') {
+        host += '-';
+      }
+    }
+    while (!host.empty() && host.back() == '-') host.pop_back();
+    if (host.size() > 32) host.resize(32);
+    if (host.empty()) host = "spotifyesp";
+    mdns_hostname_set(host.c_str());
+    mdns_instance_name_set(deviceName.c_str());
+    ESP_LOGI("spotifyesp", "mDNS address: %s.local", host.c_str());
     mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
     std::atomic<bool> gotBlob = false;
 

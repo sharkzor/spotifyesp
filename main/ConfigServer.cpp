@@ -43,6 +43,7 @@ td input,td select{width:100%}.s{color:#666;font-size:.9em}#msg{margin-top:1em;f
 <h2>Equalizer</h2>
 <label><input type="checkbox" id="en"> Enabled</label>
 <label>Pre-gain (dB), lower it when boosting to avoid clipping<input type="number" id="pre" step="0.5" min="-24" max="6" value="0"></label>
+<label>Preset<select id="preset"><option value="">Choose a preset...</option></select></label>
 <table><thead><tr><th>Type</th><th>Hz</th><th>Q</th><th>dB</th></tr></thead><tbody id="bands"></tbody></table>
 <div class="s">A band with 0 dB is skipped. Changes apply right away and are saved.</div>
 <div id="msg"></div>
@@ -60,6 +61,15 @@ for(var i=0;i<6;i++){var b=(p[2+i]||'P,1000,1,0').split(',');$('t'+i).value=b[0]
 }).catch(function(){msg('Could not read the state')})}
 function eq(){var s=($('en').checked?'1;':'0;')+$('pre').value;
 for(var i=0;i<6;i++)s+=';'+$('t'+i).value+','+$('f'+i).value+','+$('q'+i).value+','+$('g'+i).value;return s}
+var Z=',P,1000,1,0',F='1;0'+Z+Z+Z+Z+Z+Z;
+var PRE={'Flat':'0;0','Bass boost':'1;-5;L,100,0.7,5;P,200,1,2','Treble boost':'1;-4;H,6000,0.7,4;P,3500,1,1.5',
+'Loudness':'1;-6;L,80,0.7,6;P,400,1,-2;H,8000,0.7,5','Vocal':'1;-3;L,120,0.7,-3;P,2500,1,3;P,5000,1.2,2',
+'Rock':'1;-5;L,100,0.7,4;P,500,1,-3;P,3000,1,2;H,8000,0.7,4','Classical':'1;-3;L,100,0.7,2;H,7000,0.7,3',
+'Late night (soft bass)':'1;-2;L,120,0.7,-5;P,3000,1,1','Warm':'1;-3;L,150,0.7,3;H,7000,0.7,-3'};
+for(var k in PRE){var o=document.createElement('option');o.value=k;o.textContent=k;$('preset').appendChild(o)}
+function fill(t){var p=t.split(';');$('en').checked=p[0]=='1';$('pre').value=p[1];
+for(var i=0;i<6;i++){var b=(p[2+i]||'P,1000,1,0').split(',');$('t'+i).value=b[0];$('f'+i).value=b[1];$('q'+i).value=b[2];$('g'+i).value=b[3]}}
+$('preset').onchange=function(){if(this.value){fill(PRE[this.value]);if(this.value=='Flat')$('en').checked=false;else $('en').checked=true;applyEq();this.value=''}};
 var timer;function applyEq(){clearTimeout(timer);timer=setTimeout(function(){
 fetch('/api/eq',{method:'POST',headers:H,body:eq()}).then(function(r){return r.text()}).then(function(t){msg(t)})},300)}
 document.querySelectorAll('#en,#pre,#bands input,#bands select').forEach(function(e){e.addEventListener('input',applyEq)});
