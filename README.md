@@ -59,6 +59,37 @@ Avoid these pins:
 There is no USB-UART chip. To flash, hold BOOT, plug in USB, then release.
 The 5V pad takes 3.7 to 6 V when powering externally.
 
+## Quick start: pre-built images
+
+If you only want to use the receiver, you don't need ESP-IDF. Download the image for
+your board from the [Releases page](https://github.com/sharkzor/spotifyesp/releases):
+
+| Board | File |
+|---|---|
+| ESP32-S3 DevKitC-1 N16R8 | `spotifyesp-devkit-n16r8.bin` |
+| Waveshare ESP32-S3-Zero N8R8 | `spotifyesp-zero-n8r8.bin` |
+| Seeed XIAO ESP32-S3 | `spotifyesp-xiao-esp32s3.bin` |
+| HiFi-ESP32-S3-Plus | `spotifyesp-hifi-esp32-s3-plus.bin` |
+
+Each file is a complete image (bootloader, partition table and app) that goes at flash
+offset 0. Flash it with Python's `esptool` (`pip install esptool`):
+
+```sh
+esptool --chip esp32s3 -p /dev/cu.usbmodem101 write_flash 0x0 spotifyesp-zero-n8r8.bin
+```
+
+Use your own serial port (on Linux usually `/dev/ttyACM0`). On the Zero, hold BOOT while
+plugging in USB first. Without a command line you can use a browser flasher such as
+<https://espressif.github.io/esptool-js/> (Chrome or Edge): connect, set the offset to
+`0x0`, pick the file and press *Program*. Flashing replaces everything on the board,
+including saved WiFi, Spotify login and equalizer settings.
+
+The images contain no WiFi details. After flashing, join the board's `SpotifyESP-Setup-XXXX`
+network and enter your WiFi, see [WiFi setup portal](#wifi-setup-portal). The HiFi-ESP32-S3-Plus
+tries Ethernet first. Compare `SHA256SUMS` to check your download.
+
+The sections below are only needed to build the firmware yourself.
+
 ## Prerequisites
 
 - A Mac or Linux computer with a USB port (Windows is untested; WSL may work).
