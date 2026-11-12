@@ -122,7 +122,8 @@ cd spotifyesp
 
 `flash.sh` creates `sdkconfig.local` with your WiFi details (not committed), runs
 `setup.sh` when needed, builds into `build-<board>/` and flashes. `--build-only`
-skips flashing. Leave the WiFi SSID empty to set up WiFi on the board itself, see below.
+skips flashing, and `--verify` reads the boot log afterwards and reports the network,
+device name and address (`tools/bootlog.py`). Leave the WiFi SSID empty to set up WiFi on the board itself, see below.
 
 Open Spotify, press the *Devices* button and pick the device name. After the first
 login the board saves Spotify's reusable credentials in NVS and signs in again by

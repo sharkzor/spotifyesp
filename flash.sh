@@ -5,6 +5,7 @@
 #   ./flash.sh zero-n8r8             build + flash Waveshare ESP32-S3-Zero-N8R8
 #   ./flash.sh devkit-n16r8 -p /dev/cu.usbmodem1101
 #   ./flash.sh zero-n8r8 --monitor   also open the serial monitor afterwards
+#   ./flash.sh zero-n8r8 --verify    afterwards read the boot log and report success
 #   ./flash.sh zero-n8r8 --build-only
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -12,13 +13,15 @@ cd "$(dirname "$0")"
 BOARD=""
 PORT=""
 MONITOR=0
+VERIFY=0
 BUILD_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -p|--port) PORT="$2"; shift 2 ;;
     -m|--monitor) MONITOR=1; shift ;;
+    --verify) VERIFY=1; shift ;;
     --build-only) BUILD_ONLY=1; shift ;;
-    -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
     -*) echo "Unknown option $1"; exit 1 ;;
     *) BOARD="$1"; shift ;;
   esac
@@ -72,5 +75,10 @@ idf "${ARGS[@]}" build
 
 echo "==> Flashing $PORT"
 idf "${ARGS[@]}" -p "$PORT" flash
+if [ "$VERIFY" = 1 ]; then
+  echo "==> Reading the boot log (20 s)"
+  sleep 2   # the USB port can re-enumerate right after the reset
+  python tools/bootlog.py "$PORT" 20 || echo "Boot check failed, see the output above."
+fi
 [ "$MONITOR" = 1 ] && idf "${ARGS[@]}" -p "$PORT" monitor
 echo "Done. Open Spotify and pick the device from the speaker menu."
