@@ -73,9 +73,16 @@ cd spotifyesp
 `setup.sh` when needed, builds into `build-<board>/` and flashes. `--build-only`
 skips flashing. Leave the WiFi SSID empty to set up WiFi on the board itself, see below.
 
-The project builds with ESP-IDF 5.5. `env.sh` reuses the toolchain that ESPHome
-downloads into `~/Library/Caches/esphome/idf`; with a normal ESP-IDF install,
-export your own environment instead and adjust `env.sh`.
+The project builds with ESP-IDF 5.5. `env.sh` finds it automatically: an activated
+ESP-IDF, an install in `~/esp/esp-idf` or `~/.espressif/esp-idf` (or `$ESP_IDF_DIR`), or the
+toolchain ESPHome downloads into `~/Library/Caches/esphome/idf`. On a fresh machine install
+it once:
+
+```
+mkdir -p ~/esp && cd ~/esp
+git clone -b v5.5.6 --recursive https://github.com/espressif/esp-idf.git
+./esp-idf/install.sh esp32s3
+```
 
 Open Spotify, press the *Devices* button and pick the device name. After the first
 login the board saves Spotify's reusable credentials in NVS and signs in again by
