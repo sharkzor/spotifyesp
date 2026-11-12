@@ -131,9 +131,17 @@ void SpircHandler::handleFrame(std::vector<uint8_t>& data) {
     case MessageType_kMessageTypeNotify: {
       CSPOT_LOG(debug, "Notify frame");
 
-      // Pause the playback if another player took control
-      if (playbackState->isActive() &&
-          playbackState->remoteFrame.device_state.is_active) {
+      // Pause the playback if another player took control. When playback is moved
+      // here, the previous device still sends a Notify saying it is active; that
+      // device became active before we did, so it must not stop us.
+      const auto& remoteState = playbackState->remoteFrame.device_state;
+      const auto& ownState = playbackState->innerFrame.device_state;
+      bool olderThanUs = remoteState.has_became_active_at &&
+                         ownState.has_became_active_at &&
+                         remoteState.became_active_at < ownState.became_active_at;
+      if (playbackState->isActive() && remoteState.is_active && olderThanUs) {
+        CSPOT_LOG(debug, "Ignoring Notify from the previous active device");
+      } else if (playbackState->isActive() && remoteState.is_active) {
         CSPOT_LOG(debug, "Another player took control, pausing playback");
         playbackState->setActive(false);
 
