@@ -59,10 +59,30 @@ Avoid these pins:
 There is no USB-UART chip. To flash, hold BOOT, plug in USB, then release.
 The 5V pad takes 3.7 to 6 V when powering externally.
 
+## Prerequisites
+
+- A Mac or Linux computer with a USB port (Windows is untested; WSL may work).
+- An ESP32-S3 board from the list above, a USB cable that carries data, and a
+  Spotify Premium account (Spotify Connect needs it).
+- `git`, `python3` (3.9 or newer) and `cmake`. On macOS: `xcode-select --install`, then
+  `brew install cmake python`.
+- ESP-IDF 5.5, installed once (about 1.5 GB, a few minutes):
+
+  ```sh
+  mkdir -p ~/esp && cd ~/esp
+  git clone -b v5.5.6 --recursive https://github.com/espressif/esp-idf.git
+  ./esp-idf/install.sh esp32s3
+  ```
+
+`env.sh` finds ESP-IDF by itself: an already activated one, `~/esp/esp-idf`,
+`~/.espressif/esp-idf` or `$ESP_IDF_DIR`, or the toolchain ESPHome keeps in
+`~/Library/Caches/esphome/idf`. All other dependencies are vendored or downloaded by
+the build, and `flash.sh` installs the two Python packages it needs.
+
 ## Build and flash
 
 ```sh
-git clone <this repo>
+git clone https://github.com/sharkzor/spotifyesp.git
 cd spotifyesp
 ./flash.sh                 # asks for board, WiFi (first time, optional) and port
 ./flash.sh zero-n8r8       # or name the board directly
@@ -72,17 +92,6 @@ cd spotifyesp
 `flash.sh` creates `sdkconfig.local` with your WiFi details (not committed), runs
 `setup.sh` when needed, builds into `build-<board>/` and flashes. `--build-only`
 skips flashing. Leave the WiFi SSID empty to set up WiFi on the board itself, see below.
-
-The project builds with ESP-IDF 5.5. `env.sh` finds it automatically: an activated
-ESP-IDF, an install in `~/esp/esp-idf` or `~/.espressif/esp-idf` (or `$ESP_IDF_DIR`), or the
-toolchain ESPHome downloads into `~/Library/Caches/esphome/idf`. On a fresh machine install
-it once:
-
-```
-mkdir -p ~/esp && cd ~/esp
-git clone -b v5.5.6 --recursive https://github.com/espressif/esp-idf.git
-./esp-idf/install.sh esp32s3
-```
 
 Open Spotify, press the *Devices* button and pick the device name. After the first
 login the board saves Spotify's reusable credentials in NVS and signs in again by
