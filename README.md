@@ -155,3 +155,12 @@ in [IDEAS.md](IDEAS.md).
 
 GNU General Public License v3 (see `LICENSE`), because this project includes
 cspot and bell, which are GPLv3 (see `cspot/UPSTREAM.md`).
+
+## Config page and equalizer
+
+Once the board is on the network, open `http://spotifyesp.local/` (or its IP) in a browser. The page edits:
+
+- Spotify device name and streaming quality (saving restarts the board; the saved login is kept).
+- A 6-band parametric equalizer (peak, low shelf, high shelf) with pre-gain. Changes apply immediately while playing and are saved.
+
+Lower the pre-gain when boosting to avoid clipping. There is no password: anyone on your local network can open the page, so don't expose port 80 to the internet.

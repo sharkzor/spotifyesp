@@ -6,6 +6,8 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 
+#include "Equalizer.h"
+
 static const char* TAG = "i2s_sink";
 
 I2SAudioSink::I2SAudioSink(int bclk, int lrclk, int dout) {
@@ -31,6 +33,7 @@ I2SAudioSink::I2SAudioSink(int bclk, int lrclk, int dout) {
   ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_, &std_cfg));
   ESP_ERROR_CHECK(i2s_channel_enable(tx_));
   sampleRate_ = 44100;
+  eq::instance().setSampleRate(44100);
 }
 
 I2SAudioSink::~I2SAudioSink() {
@@ -54,8 +57,10 @@ void I2SAudioSink::feedPCMFrames(const uint8_t* buffer, size_t bytes) {
   while (written < bytes) {
     size_t toCopy = std::min(bytes - written, sizeof(scaled));
     const int16_t* in = reinterpret_cast<const int16_t*>(buffer + written);
+    std::copy(in, in + toCopy / 2, scaled);
+    eq::instance().process(scaled, toCopy / 2);
     for (size_t i = 0; i < toCopy / 2; i++) {
-      scaled[i] = static_cast<int16_t>((static_cast<int32_t>(in[i]) * volume_) >> 16);
+      scaled[i] = static_cast<int16_t>((static_cast<int32_t>(scaled[i]) * volume_) >> 16);
     }
     size_t chunk = 0;
     if (i2s_channel_write(tx_, scaled, toCopy, &chunk, 1000) != ESP_OK) {
@@ -82,5 +87,6 @@ bool I2SAudioSink::setParams(uint32_t sampleRate, uint8_t channelCount,
     return false;
   }
   sampleRate_ = sampleRate;
+  eq::instance().setSampleRate(sampleRate);
   return true;
 }

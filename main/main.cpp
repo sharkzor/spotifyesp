@@ -26,6 +26,7 @@
 #include "sdkconfig.h"
 
 #include "BoardHw.h"
+#include "ConfigServer.h"
 #include "I2SAudioSink.h"
 #include "WifiSetup.h"
 
@@ -107,6 +108,7 @@ class CSpotTask {
   void runTask() {
     mdns_init();
     mdns_hostname_set("spotifyesp");
+    mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
     std::atomic<bool> gotBlob = false;
 
     auto blob = std::make_shared<cspot::LoginBlob>(deviceName);
@@ -282,6 +284,7 @@ void app_main(void) {
   ESP_LOGI(TAG, "Connected over %s, starting Spotify receiver as '%s'",
            onEthernet ? "Ethernet" : "WiFi", deviceName.c_str());
   board::dacInit();
+  config_server::start(deviceName, bitrateKbps, onEthernet ? "Ethernet" : "WiFi");
 
   bell::setDefaultLogger();
   BaseType_t created = xTaskCreatePinnedToCoreWithCaps(

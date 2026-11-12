@@ -31,6 +31,9 @@ bool loadLogin(SavedLogin& out);
 bool saveLogin(const SavedLogin& login);
 void clearLogin();
 
+// Saves only the Spotify device name and streaming quality (kbps: 96, 160 or 320).
+bool saveDeviceSettings(const std::string& deviceName, uint32_t bitrate);
+
 // True when the previous boot asked for the portal. The request is cleared.
 bool consumePortalRequest();
 

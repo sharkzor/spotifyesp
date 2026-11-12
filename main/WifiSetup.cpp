@@ -474,6 +474,17 @@ bool load(Settings& out) {
   return haveSsid;
 }
 
+bool saveDeviceSettings(const std::string& deviceName, uint32_t bitrate) {
+  if (deviceName.empty() || !validBitrate(bitrate)) return false;
+  nvs_handle_t h;
+  if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &h) != ESP_OK) return false;
+  esp_err_t err = nvs_set_str(h, "name", deviceName.c_str());
+  if (err == ESP_OK) err = nvs_set_u32(h, "kbps", bitrate);
+  if (err == ESP_OK) err = nvs_commit(h);
+  nvs_close(h);
+  return err == ESP_OK;
+}
+
 namespace {
 // Flash writes disable the cache, which requires an internal-RAM stack. The receiver
 // task's stack lives in PSRAM, so its NVS writes run on a short-lived helper task.
