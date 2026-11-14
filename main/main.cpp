@@ -1,4 +1,7 @@
 #include "esp_system.h"
+#include "esp_attr.h"
+#include "esp_timer.h"
+#include <cstring>
 #include <MDNSService.h>
 #include <atomic>
 #include <cctype>
@@ -39,6 +42,19 @@ void app_main(void);
 
 #include "esp_heap_caps.h"
 #include "freertos/idf_additions.h"
+
+// A different Spotify account picked this device while another login is active. The new
+// login survives the restart in RTC memory and is used instead of waiting for the phone.
+struct PendingLogin {
+  uint32_t magic;
+  int authType;
+  uint16_t dataLen;
+  char username[96];
+  uint8_t data[1024];
+};
+static constexpr uint32_t PENDING_LOGIN_MAGIC = 0x4C4F4731;
+static RTC_NOINIT_ATTR PendingLogin pendingLogin;
+static std::atomic<bool> receiverRunning{false};
 
 static EventGroupHandle_t wifiEvents;
 static constexpr int WIFI_CONNECTED_BIT = BIT0;
@@ -165,7 +181,36 @@ class CSpotTask {
                      num);
 
             try {
+              std::string prevUser = blob->username;
+              auto prevData = blob->authData;
+              int prevType = blob->authType;
               blob->loadZeroconfQuery(queryMap);
+              if (receiverRunning) {
+                if (blob->username == prevUser) {
+                  // Same account asking again: keep the running session untouched.
+                  blob->authData = prevData;
+                  blob->authType = prevType;
+                } else if (blob->username.size() < sizeof(pendingLogin.username) &&
+                           blob->authData.size() <= sizeof(pendingLogin.data)) {
+                  BELL_LOG(info, "cspot", "New account '%s', switching login",
+                           blob->username.c_str());
+                  pendingLogin.magic = PENDING_LOGIN_MAGIC;
+                  pendingLogin.authType = blob->authType;
+                  pendingLogin.dataLen = blob->authData.size();
+                  memcpy(pendingLogin.username, blob->username.c_str(),
+                         blob->username.size() + 1);
+                  memcpy(pendingLogin.data, blob->authData.data(),
+                         blob->authData.size());
+                  wifi_setup::clearLogin();
+                  esp_timer_handle_t timer;
+                  esp_timer_create_args_t args = {};
+                  args.callback = [](void*) { esp_restart(); };
+                  args.name = "login_switch";
+                  if (esp_timer_create(&args, &timer) == ESP_OK) {
+                    esp_timer_start_once(timer, 1000 * 1000);
+                  }
+                }
+              }
               gotBlob = true;
             } catch (const std::exception& e) {
               BELL_LOG(error, "cspot", "Login failed: %s", e.what());
@@ -191,6 +236,17 @@ class CSpotTask {
       gotBlob = true;
       BELL_LOG(info, "cspot", "Using saved Spotify login");
     }
+
+    if (pendingLogin.magic == PENDING_LOGIN_MAGIC && pendingLogin.dataLen <= sizeof(pendingLogin.data)) {
+      pendingLogin.username[sizeof(pendingLogin.username) - 1] = 0;
+      blob->username = pendingLogin.username;
+      blob->authType = pendingLogin.authType;
+      blob->authData.assign(pendingLogin.data, pendingLogin.data + pendingLogin.dataLen);
+      usingSavedLogin = false;
+      gotBlob = true;
+      BELL_LOG(info, "cspot", "Using the login of the account that just connected");
+    }
+    pendingLogin.magic = 0;
 
     while (!gotBlob) {
       BELL_SLEEP_MS(1000);
@@ -240,6 +296,7 @@ class CSpotTask {
         }
       }
       auto handler = std::make_shared<cspot::SpircHandler>(ctx);
+      receiverRunning = true;
       ctx->session->startTask();
       auto sink = std::make_unique<I2SAudioSink>(CONFIG_SPOTIFY_I2S_BCLK,
                                                  CONFIG_SPOTIFY_I2S_LRCLK,
