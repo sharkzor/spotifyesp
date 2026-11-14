@@ -69,6 +69,18 @@ b = stretch(b, Y_CUT)
 b = bool_(difference, [b, box(DIV_X0, DIV_X1, 3.9, CROSS_Y1, 2.0, 10)])
 b = bool_(difference, [b, rotate(void)])
 b = bool_(union, [b, rotate(internals), box(DIV_X0, 51.0, CROSS_Y0, CROSS_Y1, 1.9, 9.0)])
+
+# the DAC goes in the rear compartment: 4 mm shorter (36 -> 32 mm) and a bigger, 1 mm lower-y cable hole
+SHRINK, Y_SHRINK = 4.0, 45.0
+HOLE_Y, HOLE_Z, HOLE_R = 59.5 - 1.0 - SHRINK, 6.0, 4.0
+b = bool_(union, [b, box(50.9, 53.0, 55.0, 64.0, 2.0, 10.0)])
+v = b.vertices.copy()
+v[v[:, 1] >= Y_SHRINK, 1] -= SHRINK
+b.vertices = v
+hole = trimesh.creation.cylinder(radius=HOLE_R, height=4.0, sections=48)
+hole.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0]))
+hole.apply_translation([51.5, HOLE_Y, HOLE_Z])
+b = bool_(difference, [b, hole])
 b.export("waveshare-back-v2-oneside.stl")
 print("base", b.bounds.round(2).tolist(), b.is_watertight)
 
@@ -90,5 +102,8 @@ t = bool_(union, [t] + [cyl(x, y, 0.85, 0.0, 2.0) for x, y in old])
 t = stretch(t, Y_CUT)
 new = [(ncx + i * pitch, ncy + j * pitch) for i in (-1, 0, 1) for j in (-1, 0, 1)]
 t = bool_(difference, [t] + [cyl(x, y, 0.58, -0.1, 2.1) for x, y in new])
+v = t.vertices.copy()
+v[v[:, 1] >= Y_SHRINK, 1] -= SHRINK
+t.vertices = v
 t.export("waveshare-top-v2-oneside.stl")
 print("lid", t.bounds.round(2).tolist(), t.is_watertight)
