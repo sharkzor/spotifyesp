@@ -208,6 +208,12 @@ void MercurySession::handlePacket() {
       if (auto callback = takeAudioKeyCallback(seqId)) {
         auto success = static_cast<RequestType>(packet.command) ==
                        RequestType::AUDIO_KEY_SUCCESS_RESPONSE;
+        if (!success) {
+          CSPOT_LOG(error, "Audio key refused by Spotify, seq %u, %u data bytes, code %02x%02x",
+                    (unsigned)seqId, (unsigned)packet.data.size(),
+                    packet.data.size() > 4 ? packet.data[4] : 0,
+                    packet.data.size() > 5 ? packet.data[5] : 0);
+        }
         callback(success, packet.data);
       }
 
